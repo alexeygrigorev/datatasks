@@ -1,0 +1,5 @@
+FROM public.ecr.aws/lambda/nodejs:18
+COPY src/ ${LAMBDA_TASK_ROOT}/src/
+COPY package.json package-lock.json ${LAMBDA_TASK_ROOT}/
+RUN npm ci --omit=dev
+CMD ["src/handler.handler"]

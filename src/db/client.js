@@ -49,10 +49,27 @@ async function stopLocal() {
 
 /**
  * Get a DynamoDB Document Client.
- * In local/test mode the client points at the in-process dynalite instance.
- * In production it uses the default AWS SDK configuration.
+ *
+ * Priority:
+ * 1. If DYNAMODB_ENDPOINT is set, use it (Docker DynamoDB Local).
+ * 2. If IS_LOCAL/NODE_ENV=test, use dynalite (existing behavior).
+ * 3. Otherwise, use default AWS SDK config (production).
  */
 async function getClient(localPort) {
+  // If DYNAMODB_ENDPOINT is set, use it (Docker DynamoDB Local)
+  if (process.env.DYNAMODB_ENDPOINT) {
+    const raw = new DynamoDBClient({
+      region: process.env.AWS_REGION || 'us-east-1',
+      endpoint: process.env.DYNAMODB_ENDPOINT,
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'local',
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'local',
+      },
+    });
+    return DynamoDBDocumentClient.from(raw);
+  }
+
+  // If IS_LOCAL/NODE_ENV=test, use dynalite (existing behavior)
   if (isLocal()) {
     const port = localPort || (await startLocal());
     const raw = new DynamoDBClient({
@@ -63,6 +80,7 @@ async function getClient(localPort) {
     return DynamoDBDocumentClient.from(raw);
   }
 
+  // Otherwise, use default AWS SDK config
   const raw = new DynamoDBClient({});
   return DynamoDBDocumentClient.from(raw);
 }
