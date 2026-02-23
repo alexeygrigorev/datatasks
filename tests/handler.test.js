@@ -1,8 +1,13 @@
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const { handler } = require('../src/handler');
+const { stopLocal } = require('../src/db/client');
 
 describe('handler', () => {
+  after(async () => {
+    await stopLocal();
+  });
+
   it('GET / returns SPA HTML with status 200', async () => {
     const event = { httpMethod: 'GET', path: '/' };
     const result = await handler(event, {});
