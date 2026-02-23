@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const { handleProjectRoutes } = require('./routes/projects');
+const { handleTemplateRoutes } = require('./routes/templates');
 const {
   createTask,
   getTask,
@@ -57,6 +58,39 @@ async function route(event, client) {
         headers: { 'Content-Type': 'text/html' },
         body: html,
       };
+    }
+
+    // GET /public/*.js — serve static JS files
+    if (method === 'GET' && reqPath.startsWith('/public/')) {
+      // Guard against path traversal
+      if (reqPath.includes('..')) {
+        return jsonResponse(404, { error: 'Not found' });
+      }
+
+      // Only serve .js files
+      if (!reqPath.endsWith('.js')) {
+        return jsonResponse(404, { error: 'Not found' });
+      }
+
+      const filename = reqPath.slice('/public/'.length);
+
+      // Extra safety: reject if filename contains slashes (only serve from top-level public dir)
+      if (filename.includes('/') || filename.includes('\\')) {
+        return jsonResponse(404, { error: 'Not found' });
+      }
+
+      const filePath = path.join(__dirname, 'public', filename);
+
+      try {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        return {
+          statusCode: 200,
+          headers: { 'Content-Type': 'application/javascript' },
+          body: content,
+        };
+      } catch {
+        return jsonResponse(404, { error: 'Not found' });
+      }
     }
 
     // GET /api/health — health check
@@ -198,6 +232,13 @@ async function route(event, client) {
 
     if (reqPath.startsWith('/api/projects')) {
       const result = await handleProjectRoutes(reqPath, method, event.body);
+      if (result) return result;
+    }
+
+    // ── Template routes ────────────────────────────────────────────
+
+    if (reqPath.startsWith('/api/templates')) {
+      const result = await handleTemplateRoutes(reqPath, method, event.body);
       if (result) return result;
     }
 

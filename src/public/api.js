@@ -1,0 +1,108 @@
+(function () {
+  'use strict';
+
+  var JSON_HEADERS = { 'Content-Type': 'application/json' };
+
+  function handleResponse(response) {
+    if (!response.ok) {
+      return response.text().then(function (text) {
+        var msg;
+        try {
+          var parsed = JSON.parse(text);
+          msg = parsed.error || response.statusText;
+        } catch (e) {
+          msg = response.statusText || 'Request failed';
+        }
+        throw new Error(msg);
+      });
+    }
+    if (response.status === 204) {
+      return null;
+    }
+    return response.json();
+  }
+
+  window.api = {
+    tasks: {
+      list: function (params) {
+        var qs = new URLSearchParams(params || {}).toString();
+        return fetch('/api/tasks' + (qs ? '?' + qs : '')).then(handleResponse);
+      },
+      get: function (id) {
+        return fetch('/api/tasks/' + id).then(handleResponse);
+      },
+      create: function (data) {
+        return fetch('/api/tasks', {
+          method: 'POST',
+          headers: JSON_HEADERS,
+          body: JSON.stringify(data),
+        }).then(handleResponse);
+      },
+      update: function (id, data) {
+        return fetch('/api/tasks/' + id, {
+          method: 'PUT',
+          headers: JSON_HEADERS,
+          body: JSON.stringify(data),
+        }).then(handleResponse);
+      },
+      delete: function (id) {
+        return fetch('/api/tasks/' + id, { method: 'DELETE' }).then(handleResponse);
+      },
+    },
+
+    projects: {
+      list: function () {
+        return fetch('/api/projects').then(handleResponse);
+      },
+      get: function (id) {
+        return fetch('/api/projects/' + id).then(handleResponse);
+      },
+      create: function (data) {
+        return fetch('/api/projects', {
+          method: 'POST',
+          headers: JSON_HEADERS,
+          body: JSON.stringify(data),
+        }).then(handleResponse);
+      },
+      update: function (id, data) {
+        return fetch('/api/projects/' + id, {
+          method: 'PUT',
+          headers: JSON_HEADERS,
+          body: JSON.stringify(data),
+        }).then(handleResponse);
+      },
+      delete: function (id) {
+        return fetch('/api/projects/' + id, { method: 'DELETE' }).then(handleResponse);
+      },
+      tasks: function (id) {
+        return fetch('/api/projects/' + id + '/tasks').then(handleResponse);
+      },
+    },
+
+    templates: {
+      list: function () {
+        return fetch('/api/templates').then(handleResponse);
+      },
+      get: function (id) {
+        return fetch('/api/templates/' + id).then(handleResponse);
+      },
+      create: function (data) {
+        return fetch('/api/templates', {
+          method: 'POST',
+          headers: JSON_HEADERS,
+          body: JSON.stringify(data),
+        }).then(handleResponse);
+      },
+      update: function (id, data) {
+        return fetch('/api/templates/' + id, {
+          method: 'PUT',
+          headers: JSON_HEADERS,
+          body: JSON.stringify(data),
+        }).then(handleResponse);
+      },
+      delete: function (id) {
+        return fetch('/api/templates/' + id, { method: 'DELETE' }).then(handleResponse);
+      },
+    },
+  };
+})();

@@ -15,8 +15,10 @@ describe('handler', () => {
     assert.strictEqual(result.statusCode, 200);
     assert.strictEqual(result.headers['Content-Type'], 'text/html');
     assert.ok(result.body.includes('<title>DataTasks</title>'));
-    assert.ok(result.body.includes('DataTasks is running'));
     assert.ok(result.body.includes('<div id="app"></div>'));
+    assert.ok(result.body.includes('href="#/tasks"'));
+    assert.ok(result.body.includes('href="#/projects"'));
+    assert.ok(result.body.includes('href="#/templates"'));
   });
 
   it('GET /api/health returns {"status":"ok"} with status 200', async () => {
