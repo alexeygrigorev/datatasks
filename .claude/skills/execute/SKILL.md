@@ -37,7 +37,7 @@ After picking issues, create a todo list with dependencies:
 Launch engineers in parallel for each picked issue:
 
 ```
-Task(subagent_type="implementer", model="opus", prompt="Implement issue #N. Read the issue with gh issue view N --repo alexeygrigorev/datatasks. Read docs/specs.md and _docs/PROCESS.md first. Follow the spec and acceptance criteria. Write code and tests. Do NOT commit.")
+Task(subagent_type="implementer", model="opus", prompt="Implement issue #N. Read the issue with gh issue view N --repo alexeygrigorev/datatasks. Read docs/specs.md and docs/PROCESS.md first. Follow the spec and acceptance criteria. Write code and tests. Do NOT commit.")
 ```
 
 ## Step 3: QA (parallel)
@@ -45,7 +45,7 @@ Task(subagent_type="implementer", model="opus", prompt="Implement issue #N. Read
 For each completed implementation, launch a tester agent:
 
 ```
-Task(subagent_type="qa", model="opus", prompt="QA issue #N. Read docs/specs.md and _docs/PROCESS.md first. The engineer wrote {description}. Review the code, run ALL tests. Report pass/fail with specifics.")
+Task(subagent_type="qa", model="opus", prompt="QA issue #N. Read docs/specs.md and docs/PROCESS.md first. The engineer wrote {description}. Review the code, run ALL tests. Report pass/fail with specifics.")
 ```
 
 ## Step 4: Handle QA Results

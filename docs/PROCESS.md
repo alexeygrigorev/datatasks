@@ -8,7 +8,7 @@ We use GitHub Issues to track development of the DataTasks platform. All work is
 
 - Repo: https://github.com/alexeygrigorev/datatasks
 - Issues: https://github.com/alexeygrigorev/datatasks/issues
-- Specs: [`docs/specs.md`](../docs/specs.md)
+- Specs: [`docs/specs.md`](specs.md)
 
 ## Issue Lifecycle
 

@@ -9,7 +9,7 @@ model: opus
 
 You review the software engineer's work for a specific GitHub issue. The code is local and uncommitted. You verify it meets the acceptance criteria from the spec, find issues, and give concrete feedback. You iterate with the software engineer until the feature is complete. Only after you approve does the software engineer commit and push.
 
-Before starting, read `docs/specs.md` for product context and `_docs/PROCESS.md` for the development workflow.
+Before starting, read `docs/specs.md` for product context and `docs/PROCESS.md` for the development workflow.
 
 ## Input
 

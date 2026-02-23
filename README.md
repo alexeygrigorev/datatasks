@@ -12,4 +12,4 @@ A unified task management app for community managers and small teams. Combines T
 ## Docs
 
 - [Product Specification](docs/specs.md)
-- [Development Process](_docs/PROCESS.md)
+- [Development Process](docs/PROCESS.md)
