@@ -4,6 +4,8 @@ const path = require('path');
 const { handleProjectRoutes } = require('./routes/projects');
 const { handleTemplateRoutes } = require('./routes/templates');
 const { handleRecurringRoutes } = require('./routes/recurring');
+const { handleTelegramWebhook } = require('./routes/telegram');
+const { handleEmailWebhook } = require('./routes/email');
 const {
   createTask,
   getTask,
@@ -248,6 +250,18 @@ async function route(event, client) {
     if (reqPath.startsWith('/api/recurring')) {
       const result = await handleRecurringRoutes(reqPath, method, event.body);
       if (result) return result;
+    }
+
+    // ── Telegram webhook ────────────────────────────────────────
+
+    if (method === 'POST' && reqPath === '/api/webhook/telegram') {
+      return handleTelegramWebhook(event);
+    }
+
+    // ── Email webhook ───────────────────────────────────────────
+
+    if (method === 'POST' && reqPath === '/api/webhook/email') {
+      return await handleEmailWebhook(event, client);
     }
 
     // Anything else — 404
