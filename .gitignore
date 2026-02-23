@@ -1,0 +1,6 @@
+node_modules/
+.local/
+*.db
+.env
+coverage/
+dist/
