@@ -29,6 +29,7 @@
     '#/tasks': renderTasks,
     '#/projects': renderProjects,
     '#/templates': renderTemplates,
+    '#/recurring': renderRecurring,
   };
 
   function navigate() {
@@ -160,7 +161,7 @@
         showError('Description and date are required.');
         return;
       }
-      var data = { description: desc, date: date };
+      var data = { description: desc, date: date, source: 'manual' };
       if (comment) data.comment = comment;
 
       btn.disabled = true;
@@ -233,9 +234,10 @@
         var isDone = t.status === 'done';
         var rowClass = isDone ? ' class="task-done"' : '';
         var checked = isDone ? ' checked' : '';
+        var adHocBadge = !t.projectId ? '<span class="badge-adhoc">ad hoc</span> ' : '';
         html += '<tr' + rowClass + ' data-task-row="' + t.id + '">' +
           '<td>' + escapeHtml(t.date) + '</td>' +
-          '<td class="task-description editable" data-field="description" data-task-id="' + t.id + '">' + escapeHtml(t.description) + '</td>' +
+          '<td class="task-description editable" data-field="description" data-task-id="' + t.id + '">' + adHocBadge + escapeHtml(t.description) + '</td>' +
           '<td class="task-status"><input type="checkbox" class="task-status-checkbox" data-task-id="' + t.id + '" data-status="' + (t.status || 'todo') + '"' + checked + ' /></td>' +
           '<td class="task-comment editable" data-field="comment" data-task-id="' + t.id + '">' + escapeHtml(t.comment || '') + '</td>' +
           '<td><button class="btn-danger" data-delete-task="' + t.id + '" data-task-desc="' + escapeHtml(t.description) + '">Delete</button></td>' +
@@ -711,6 +713,198 @@
     }).catch(function (err) {
       container.innerHTML = '';
       showError('Failed to load templates: ' + err.message);
+    });
+  }
+
+
+  // ── Recurring View ──────────────────────────────────────────────
+
+  var DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  function scheduleSummary(config) {
+    if (config.schedule === 'daily') return 'Daily';
+    if (config.schedule === 'weekly') return 'Weekly (' + DAY_NAMES[config.dayOfWeek] + ')';
+    if (config.schedule === 'monthly') return 'Monthly (day ' + config.dayOfMonth + ')';
+    return config.schedule;
+  }
+
+  function renderRecurring() {
+    clearApp();
+
+    var header = document.createElement('h2');
+    header.textContent = 'Recurring Tasks';
+    app.appendChild(header);
+
+    // Create form
+    var form = document.createElement('div');
+    form.className = 'form-section';
+    form.innerHTML =
+      '<h3>New Recurring Config</h3>' +
+      '<div class="form-row">' +
+        '<div class="form-group">' +
+          '<label for="rec-desc">Description</label>' +
+          '<input type="text" id="rec-desc" placeholder="Task description" style="width:300px;" />' +
+        '</div>' +
+        '<div class="form-group">' +
+          '<label for="rec-schedule">Schedule</label>' +
+          '<select id="rec-schedule">' +
+            '<option value="daily">Daily</option>' +
+            '<option value="weekly">Weekly</option>' +
+            '<option value="monthly">Monthly</option>' +
+          '</select>' +
+        '</div>' +
+        '<div class="form-group" id="rec-day-group" style="display:none;">' +
+          '<label for="rec-day" id="rec-day-label">Day</label>' +
+          '<input type="number" id="rec-day" min="0" max="31" style="width:80px;padding:8px 10px;border:1px solid #ddd;border-radius:4px;font-size:14px;" />' +
+        '</div>' +
+        '<div class="form-group">' +
+          '<label>&nbsp;</label>' +
+          '<button class="btn-primary" id="rec-create-btn">Create</button>' +
+        '</div>' +
+      '</div>';
+    app.appendChild(form);
+
+    var scheduleSelect = document.getElementById('rec-schedule');
+    var dayGroup = document.getElementById('rec-day-group');
+    var dayInput = document.getElementById('rec-day');
+    var dayLabel = document.getElementById('rec-day-label');
+
+    function updateDayField() {
+      var val = scheduleSelect.value;
+      if (val === 'weekly') {
+        dayGroup.style.display = '';
+        dayLabel.textContent = 'Day of Week (0=Sun, 6=Sat)';
+        dayInput.min = '0';
+        dayInput.max = '6';
+        dayInput.value = '';
+      } else if (val === 'monthly') {
+        dayGroup.style.display = '';
+        dayLabel.textContent = 'Day of Month (1-31)';
+        dayInput.min = '1';
+        dayInput.max = '31';
+        dayInput.value = '';
+      } else {
+        dayGroup.style.display = 'none';
+        dayInput.value = '';
+      }
+    }
+
+    scheduleSelect.addEventListener('change', updateDayField);
+
+    document.getElementById('rec-create-btn').addEventListener('click', function () {
+      var desc = document.getElementById('rec-desc').value.trim();
+      var schedule = scheduleSelect.value;
+      if (!desc) {
+        showError('Description is required.');
+        return;
+      }
+      var data = { description: desc, schedule: schedule };
+      if (schedule === 'weekly') {
+        data.dayOfWeek = parseInt(dayInput.value, 10);
+      } else if (schedule === 'monthly') {
+        data.dayOfMonth = parseInt(dayInput.value, 10);
+      }
+      api.recurring.create(data).then(function () {
+        document.getElementById('rec-desc').value = '';
+        dayInput.value = '';
+        loadRecurring();
+      }).catch(function (err) {
+        showError('Failed to create recurring config: ' + err.message);
+      });
+    });
+
+    // Generate section
+    var genSection = document.createElement('div');
+    genSection.className = 'form-section';
+    genSection.innerHTML =
+      '<h3>Generate Tasks</h3>' +
+      '<div class="form-row">' +
+        '<div class="form-group">' +
+          '<label for="gen-start">Start Date</label>' +
+          '<input type="date" id="gen-start" value="' + todayString() + '" />' +
+        '</div>' +
+        '<div class="form-group">' +
+          '<label for="gen-end">End Date</label>' +
+          '<input type="date" id="gen-end" value="' + todayString() + '" />' +
+        '</div>' +
+        '<div class="form-group">' +
+          '<label>&nbsp;</label>' +
+          '<button class="btn-primary" id="gen-btn">Generate</button>' +
+        '</div>' +
+      '</div>' +
+      '<div id="gen-result" style="margin-top:12px;font-size:14px;"></div>';
+    app.appendChild(genSection);
+
+    document.getElementById('gen-btn').addEventListener('click', function () {
+      var startDate = document.getElementById('gen-start').value;
+      var endDate = document.getElementById('gen-end').value;
+      var resultDiv = document.getElementById('gen-result');
+      resultDiv.textContent = 'Generating...';
+      api.recurring.generate({ startDate: startDate, endDate: endDate }).then(function (data) {
+        var count = (data.generated || []).length;
+        var skipped = data.skipped || 0;
+        resultDiv.textContent = 'Generated ' + count + ' task(s), skipped ' + skipped + ' duplicate(s).';
+      }).catch(function (err) {
+        resultDiv.textContent = '';
+        showError('Failed to generate tasks: ' + err.message);
+      });
+    });
+
+    // Table container
+    var tableContainer = document.createElement('div');
+    tableContainer.id = 'recurring-table';
+    app.appendChild(tableContainer);
+
+    loadRecurring();
+  }
+
+  function loadRecurring() {
+    var container = document.getElementById('recurring-table');
+    if (!container) return;
+    container.innerHTML = '<p>Loading...</p>';
+
+    var banners = app.querySelectorAll('.error-banner');
+    banners.forEach(function (b) { b.remove(); });
+
+    api.recurring.list().then(function (data) {
+      var configs = data.recurringConfigs || [];
+      if (configs.length === 0) {
+        container.innerHTML = '<div class="empty-state">No recurring configs yet. Create one to get started.</div>';
+        return;
+      }
+      var html = '<table><thead><tr>' +
+        '<th>Description</th><th>Schedule</th><th>Enabled</th><th>Actions</th>' +
+        '</tr></thead><tbody>';
+      configs.forEach(function (c) {
+        var enabledText = c.enabled ? 'Yes' : 'No';
+        html += '<tr>' +
+          '<td>' + escapeHtml(c.description) + '</td>' +
+          '<td>' + escapeHtml(scheduleSummary(c)) + '</td>' +
+          '<td>' + enabledText + '</td>' +
+          '<td>' +
+            '<button class="btn-danger" data-delete-recurring="' + c.id + '" data-rec-desc="' + escapeHtml(c.description) + '">Delete</button>' +
+          '</td>' +
+          '</tr>';
+      });
+      html += '</tbody></table>';
+      container.innerHTML = html;
+
+      // Delete handlers
+      container.querySelectorAll('[data-delete-recurring]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var id = btn.getAttribute('data-delete-recurring');
+          var desc = btn.getAttribute('data-rec-desc');
+          if (!confirm('Delete recurring config: "' + desc + '"?')) return;
+          api.recurring.delete(id).then(function () {
+            loadRecurring();
+          }).catch(function (err) {
+            showError('Failed to delete: ' + err.message);
+          });
+        });
+      });
+    }).catch(function (err) {
+      container.innerHTML = '';
+      showError('Failed to load recurring configs: ' + err.message);
     });
   }
 

@@ -558,4 +558,150 @@ describe('API — CRUD for tasks', () => {
       assert.strictEqual(body.error, 'Internal server error');
     });
   });
+
+  // ── Ad hoc task polish (issue #9) ──────────────────────────────────
+
+  describe('Source defaults to manual', () => {
+    it('creating a task without source defaults to "manual"', async () => {
+      const event = {
+        httpMethod: 'POST',
+        path: '/api/tasks',
+        body: JSON.stringify({ description: 'Ad hoc task', date: '2096-01-01' }),
+      };
+      const res = await handler(event, {});
+      assert.strictEqual(res.statusCode, 201);
+
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.source, 'manual');
+    });
+
+    it('creating a task with an explicit source preserves it', async () => {
+      const event = {
+        httpMethod: 'POST',
+        path: '/api/tasks',
+        body: JSON.stringify({ description: 'Bot task', date: '2096-01-02', source: 'telegram' }),
+      };
+      const res = await handler(event, {});
+      assert.strictEqual(res.statusCode, 201);
+
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.source, 'telegram');
+    });
+  });
+
+  describe('Creating a task with a comment', () => {
+    it('creates a task with a comment field', async () => {
+      const event = {
+        httpMethod: 'POST',
+        path: '/api/tasks',
+        body: JSON.stringify({
+          description: 'Task with comment',
+          date: '2096-02-01',
+          comment: 'This is a note',
+        }),
+      };
+      const res = await handler(event, {});
+      assert.strictEqual(res.statusCode, 201);
+
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.comment, 'This is a note');
+      assert.strictEqual(body.source, 'manual');
+    });
+
+    it('creates a task without a comment field', async () => {
+      const event = {
+        httpMethod: 'POST',
+        path: '/api/tasks',
+        body: JSON.stringify({
+          description: 'Task without comment',
+          date: '2096-02-02',
+        }),
+      };
+      const res = await handler(event, {});
+      assert.strictEqual(res.statusCode, 201);
+
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.comment, undefined);
+    });
+  });
+
+  describe('Full lifecycle of ad hoc task', () => {
+    it('create, list, update, mark done, delete', async () => {
+      const uniqueDate = '2097-11-11';
+
+      // 1. Create an ad hoc task (no projectId)
+      const createRes = await handler({
+        httpMethod: 'POST',
+        path: '/api/tasks',
+        body: JSON.stringify({
+          description: 'Lifecycle ad hoc task',
+          date: uniqueDate,
+          comment: 'Initial comment',
+        }),
+      }, {});
+      assert.strictEqual(createRes.statusCode, 201);
+      const created = JSON.parse(createRes.body);
+      assert.ok(created.id);
+      assert.strictEqual(created.source, 'manual');
+      assert.strictEqual(created.projectId, undefined);
+      assert.strictEqual(created.status, 'todo');
+      assert.strictEqual(created.comment, 'Initial comment');
+
+      // 2. Verify it appears in the task list (by date)
+      const listRes = await handler({
+        httpMethod: 'GET',
+        path: '/api/tasks',
+        queryStringParameters: { date: uniqueDate },
+      }, {});
+      assert.strictEqual(listRes.statusCode, 200);
+      const listBody = JSON.parse(listRes.body);
+      const found = listBody.tasks.find(function (t) { return t.id === created.id; });
+      assert.ok(found, 'Ad hoc task should appear in task list');
+      assert.strictEqual(found.description, 'Lifecycle ad hoc task');
+
+      // 3. Update the description
+      const updateRes = await handler({
+        httpMethod: 'PUT',
+        path: '/api/tasks/' + created.id,
+        body: JSON.stringify({ description: 'Updated ad hoc task' }),
+      }, {});
+      assert.strictEqual(updateRes.statusCode, 200);
+      const updated = JSON.parse(updateRes.body);
+      assert.strictEqual(updated.description, 'Updated ad hoc task');
+
+      // 4. Mark as done
+      const doneRes = await handler({
+        httpMethod: 'PUT',
+        path: '/api/tasks/' + created.id,
+        body: JSON.stringify({ status: 'done' }),
+      }, {});
+      assert.strictEqual(doneRes.statusCode, 200);
+      const done = JSON.parse(doneRes.body);
+      assert.strictEqual(done.status, 'done');
+
+      // 5. Verify status persisted
+      const getRes = await handler({
+        httpMethod: 'GET',
+        path: '/api/tasks/' + created.id,
+      }, {});
+      assert.strictEqual(getRes.statusCode, 200);
+      const fetched = JSON.parse(getRes.body);
+      assert.strictEqual(fetched.status, 'done');
+      assert.strictEqual(fetched.description, 'Updated ad hoc task');
+
+      // 6. Delete the task
+      const deleteRes = await handler({
+        httpMethod: 'DELETE',
+        path: '/api/tasks/' + created.id,
+      }, {});
+      assert.strictEqual(deleteRes.statusCode, 204);
+
+      // 7. Verify it's gone
+      const goneRes = await handler({
+        httpMethod: 'GET',
+        path: '/api/tasks/' + created.id,
+      }, {});
+      assert.strictEqual(goneRes.statusCode, 404);
+    });
+  });
 });

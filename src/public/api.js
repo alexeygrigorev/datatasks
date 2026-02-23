@@ -104,5 +104,38 @@
         return fetch('/api/templates/' + id, { method: 'DELETE' }).then(handleResponse);
       },
     },
+
+    recurring: {
+      list: function () {
+        return fetch('/api/recurring').then(handleResponse);
+      },
+      get: function (id) {
+        return fetch('/api/recurring/' + id).then(handleResponse);
+      },
+      create: function (data) {
+        return fetch('/api/recurring', {
+          method: 'POST',
+          headers: JSON_HEADERS,
+          body: JSON.stringify(data),
+        }).then(handleResponse);
+      },
+      update: function (id, data) {
+        return fetch('/api/recurring/' + id, {
+          method: 'PUT',
+          headers: JSON_HEADERS,
+          body: JSON.stringify(data),
+        }).then(handleResponse);
+      },
+      delete: function (id) {
+        return fetch('/api/recurring/' + id, { method: 'DELETE' }).then(handleResponse);
+      },
+      generate: function (data) {
+        return fetch('/api/recurring/generate', {
+          method: 'POST',
+          headers: JSON_HEADERS,
+          body: JSON.stringify(data),
+        }).then(handleResponse);
+      },
+    },
   };
 })();

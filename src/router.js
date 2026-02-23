@@ -3,6 +3,7 @@ const path = require('path');
 
 const { handleProjectRoutes } = require('./routes/projects');
 const { handleTemplateRoutes } = require('./routes/templates');
+const { handleRecurringRoutes } = require('./routes/recurring');
 const {
   createTask,
   getTask,
@@ -118,7 +119,7 @@ async function route(event, client) {
       if (body.date) taskData.date = body.date;
       if (body.comment !== undefined) taskData.comment = body.comment;
       if (body.projectId !== undefined) taskData.projectId = body.projectId;
-      if (body.source !== undefined) taskData.source = body.source;
+      taskData.source = body.source || 'manual';
 
       const task = await createTask(client, taskData);
       return jsonResponse(201, task);
@@ -239,6 +240,13 @@ async function route(event, client) {
 
     if (reqPath.startsWith('/api/templates')) {
       const result = await handleTemplateRoutes(reqPath, method, event.body);
+      if (result) return result;
+    }
+
+    // ── Recurring routes ───────────────────────────────────────────
+
+    if (reqPath.startsWith('/api/recurring')) {
+      const result = await handleRecurringRoutes(reqPath, method, event.body);
       if (result) return result;
     }
 
