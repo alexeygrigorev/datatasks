@@ -1,6 +1,8 @@
 import http from 'http';
 import { URL } from 'url';
 import { handler } from '../src/handler';
+import { seed as seedUsers } from './seed-users';
+import { seed as seedTemplates } from './seed-templates';
 import type { LambdaEvent } from '../src/types';
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
@@ -63,8 +65,21 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`Dev server listening at http://localhost:${PORT}`);
+// Seed users and templates before starting the server
+async function runSeeds() {
+  try {
+    await seedUsers();
+    await seedTemplates();
+    console.log('Seed data initialized.');
+  } catch (err) {
+    console.error('Seed error (non-fatal):', err);
+  }
+}
+
+runSeeds().then(() => {
+  server.listen(PORT, () => {
+    console.log(`Dev server listening at http://localhost:${PORT}`);
+  });
 });
 
 process.on('SIGINT', () => {
