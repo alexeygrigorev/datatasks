@@ -19,9 +19,9 @@ User creates issue     →  PM grooms        →  Engineer builds  →  Tester v
 
 1. User creates an issue via the GitHub issue template. It gets the `needs grooming` label automatically.
 2. Product Manager reads the raw request, researches the codebase, and rewrites the issue with: scope, acceptance criteria, dependencies, and test scenarios. Removes `needs grooming`, adds proper labels.
-3. Software Engineer implements the groomed issue — writes code and tests locally. Does NOT commit.
-4. Tester reviews the code, runs ALL tests, verifies every acceptance criterion. Reports pass/fail.
-5. Product Manager does final acceptance review from the user's perspective — checks user flow, copy, empty states, navigation, consistency. Reports accept/reject.
+3. Software Engineer implements the groomed issue — writes code, unit tests, AND Playwright E2E tests locally. Runs `npx playwright test` to verify. Does NOT commit.
+4. Tester reviews the code, runs ALL tests (unit + E2E), verifies every acceptance criterion. Reports pass/fail.
+5. Product Manager does final acceptance review — checks user flow, copy, empty states, AND verifies Playwright E2E tests exist and cover the issue's BDD scenarios. Rejects if E2E tests are missing.
 6. Software Engineer commits and pushes with `Closes #N`.
 7. On-Call Engineer monitors CI/CD and fixes any breakages.
 
@@ -79,8 +79,8 @@ Orchestrator picks groomed issue
 1. User creates a raw issue via the GitHub template (auto-labeled `needs grooming`)
 2. Product Manager grooms it: scope, acceptance criteria, test scenarios, dependencies, labels
 3. Orchestrator picks a groomed issue and assigns it to the software engineer
-4. Software engineer reads the issue, writes code and tests locally (does NOT commit)
-5. Tester reviews the code, runs all tests, reports pass/fail
+4. Software engineer reads the issue, writes code, unit tests, AND Playwright E2E tests locally. Runs `npx playwright test` to verify. Does NOT commit.
+5. Tester reviews the code, runs all tests (unit + E2E via `npx playwright test`), reports pass/fail
 6. If tester fails: specific feedback → software engineer fixes → tester re-reviews (repeat)
 7. If tester passes: Product Manager does acceptance review from user perspective
 8. If PM rejects: specific UX feedback → software engineer fixes → PM re-reviews
@@ -99,7 +99,9 @@ Orchestrator picks groomed issue
 - If PM accepts: tell software engineer to commit and push
 - After pushing, run oncall-engineer to check CI/CD
 - After committing, pick the next two issues (never stop until all issues are done)
-- Tester must actually run all tests — not just review code
+- Tester must actually run all tests — both `npm test` and `npx playwright test` — not just review code
+- Engineer must write AND run Playwright E2E tests before reporting done
+- PM must reject if E2E tests are missing or not covering the issue's BDD scenarios
 
 ### How to Pick Issues
 
@@ -145,4 +147,17 @@ Some acceptance criteria are marked `[HUMAN]` in issues (OAuth flows, visual che
 - Frontend: Single Page Application (SPA) with vanilla JavaScript (no React)
 - Deployment: Fully serverless (Lambda + DynamoDB)
 - Local dev: Local DynamoDB alternative (SQLite-like)
-- Testing: Local + integration tests via Docker
+- Unit tests: `npm test` (Node.js built-in test runner, `tests/*.test.js`)
+- **E2E tests: `npx playwright test` (Playwright, `e2e/*.spec.js`)** — required for every issue
+- Integration tests: Docker-based (`scripts/integration-test.sh`)
+
+## E2E Testing Requirements
+
+Every issue must have Playwright E2E tests that cover its BDD test scenarios. This is enforced at two gates:
+
+1. **Software Engineer** writes E2E tests in `e2e/*.spec.js` and runs `npx playwright test` before reporting done
+2. **Product Manager** rejects acceptance if E2E tests are missing or not executed
+
+The dev server starts automatically via `playwright.config.js` (no manual setup needed). E2E tests use:
+- `request` fixture for API endpoint testing (HTTP calls)
+- `page` fixture for frontend/browser interaction testing

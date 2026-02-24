@@ -1,132 +1,390 @@
-# DataTasks — Product Specification
+# DataTasks - Product Specification
 
-A unified task management application that combines the best aspects of Trello and todo lists, specifically designed for the needs of community managers and small teams.
+A unified task management application that combines the best aspects of Trello and todo lists, specifically designed for community managers and small teams.
 
-## Architecture
+## Background
 
-- **Backend**: AWS Lambda with JavaScript
-- **Database**: DynamoDB
-- **Frontend**: Single Page Application (SPA) with vanilla JavaScript (no React), served from the Lambda on the index request
-- **Deployment**: Fully serverless — Lambda + DynamoDB, no hosting costs
+The current workflow for Grace (community manager at DataTalks.Club) involves multiple disjointed systems:
 
-## Local Development
-
-- Use a local DynamoDB alternative that works like SQLite — no need for real DynamoDB locally
-- No Docker required for development
-- Run and test everything locally without hassle
-- Local environment should be as close to Lambda as possible
-
-## Deployment
-
-- Deploy through Lambda and DynamoDB
-- If Docker is needed for packaging the deployment, that is acceptable
-- Fewer dependencies the better
-- If everything fits in one Lambda — perfect
-- Simple zip archive deployment would be ideal
-
-## Testing
-
-- Local testing should be easy and straightforward
-- Integration testing: run Lambda in Docker and test through that
-
-## The Problem
-
-The current workflow for Grace (community manager at DataTalks Club) involves multiple disjointed systems:
-
-**Multiple task sources:**
 - Google Spreadsheet for todo list
-- Trello for project cards
-- Individual tasks inside Trello cards
+- Trello for project cards and tasks inside them
 - Ad hoc tasks sent via Telegram
 - Email forwarding creates additional tasks
 - Regular recurring tasks (weekly mailchimp dumps, etc.)
 
-**Inefficiency:** to see what needs to be done today, Grace must:
-1. Check the Google Spreadsheet
-2. Go through each Trello card
-3. Look at tasks inside each card
-4. Check for any Telegram messages
-5. Check email-derived tasks
+To see what needs to be done today, Grace must check all of these separately. 
 
-This scattered approach means significant time spent just gathering information before any work can begin.
+Existing tools (Trello, Monday, Asana, Jira) don't fit because:
 
-## Why Existing Tools Don't Work
-
-**Trello limitations:**
-- Ad hoc tasks cannot be easily added to Trello
-- Would need to create a separate card for each small task (overkill)
-- Tasks are trapped inside cards — no unified view of all tasks across cards
-- No way to see all today's tasks at a glance without opening every card
-- Integrations exist (Zapier, n8n, etc.) but may be paid and limited
-
-**Other tools:**
-- Monday, Asana, Jira — don't quite fit this specific use case
-- Trello's power-ups and integrations are limited to what they support
+- Ad hoc tasks can't be easily added to Trello without creating a full card
+- Tasks are trapped inside cards - no unified view across all cards
+- Integrations (Zapier, n8n) are paid and limited
 - Need something simple and customizable
 
-## The Vision
+## Architecture
 
-A unified task management system that combines:
-- Trello-like project templates and cards
-- Spreadsheet-like task list view
-- Automated task capture from multiple sources
-- Template-based deadline management
+- Backend: AWS Lambda with JavaScript
+- Database: DynamoDB
+- Frontend: SPA with vanilla JavaScript (no React), served from the Lambda
+- Deployment: Fully serverless - Lambda + DynamoDB, no hosting costs
 
-### Core Concepts
+### Local Development
 
-**Templates (Playbooks):**
-- Newsletter template
-- Course template
-- Event template
-- Each template contains a set of related tasks with relative deadlines
+- Local DynamoDB alternative that works like SQLite - no real DynamoDB needed
+- No Docker required for development
+- Local environment as close to Lambda as possible
 
-**Anchor Date:** each card/project has an anchor date (e.g., event date, launch date)
-- Tasks have relative deadlines: "2 weeks before", "1 week before", "1 week after"
-- System automatically calculates actual due dates based on anchor date
-- All tasks from the project appear in the unified task list
+### Deployment
 
-**Two views:**
-1. **Project/Card View** — like Trello, high-level organization
-2. **Task List View** — all tasks from all projects in a simple table
+- Deploy through Lambda and DynamoDB
+- Docker acceptable for packaging if needed
+- Fewer dependencies the better - ideally one Lambda, simple zip archive
 
-### Task Types
+### Testing
 
-**Template-based tasks:**
-- Created automatically when a project is instantiated from a template
+- Local testing should be easy and straightforward
+- Integration testing: run Lambda in Docker and test through that
+
+## Core Concepts
+
+### Users
+
+- Everyone is on the same team - all users can see tasks of others
+- Adding users is manual via terminal/scripts - no signup flow needed
+- When a user logs in, they see tasks assigned to them by default, but can toggle to see everything
+- Anyone can execute any task even if it's assigned to somebody else
+
+### Templates
+
+Templates (playbooks) define reusable task sets for repeating workflows (newsletter, course, event, etc.).
+
+- Displayed as cards (like bundles), not a table
+- Card display format: emoji, tag, title - with anchor date shown as a separate UI element (badge/tag), not part of the title text
+- Clicking a card opens it for editing, including arranging items within
+- Can contain variables in the title (e.g., day)
+- Each template has an anchor date - the main event day
+- Tasks are set up relative to the anchor date
+- Some tasks are "milestone tasks" fixed to the anchor date; other tasks are relative to these milestones
+- Templates should have tags
+- Default assignee per template, with customizable assignee per task
+- Drag and drop to reorder tasks; when order changes, offset days update accordingly
+- Each task definition has:
+  - Description
+  - Offset days (relative to anchor date)
+  - Optional instructions URL (link to how-to document)
+- Template also defines which links a bundle needs (pre-defined link slots)
+- Bundle creation triggers - two types:
+  - Automatic: template has a schedule (cron expression) that auto-creates bundles. The schedule defines when to create the bundle relative to the anchor date. Examples: Newsletter (weekly, 14 days before publish), Social Media Weekly (weekly, Friday before), Tax Report (monthly, 1st of following month)
+  - Manual: bundle is created by a person when a specific event happens (e.g., guest confirms a date, Alexey sends a recording). No schedule - user creates the bundle and sets the anchor date
+- Some templates may not have a meaningful anchor date (e.g., Tax Report) - tasks are just sequential
+
+### Bundles
+
+A bundle is an instance of a template with a concrete anchor date. When created, all template tasks are generated with calculated due dates.
+
+- Displayed as cards with same format as templates: emoji, tag, title - with anchor date as a separate badge
+- Progress badge showing completed/total tasks
+- Ordered/grouped by template type (which template they were created from)
+- Inherit tags from templates
+- Task dates calculated relative to the anchor date
+- Links:
+  - Pre-defined link slots from the template
+  - Users can add custom extra links beyond template-defined ones
+- Can mark tasks as done within the bundle view
+- No direct delete - flow: archive -> delete
+
+### Tasks
+
+Three types with clear visual distinction:
+
+Template-based tasks:
+- Created automatically when a bundle is instantiated from a template
 - Have relative deadlines calculated from anchor date
-- Appear in both the project card and the unified task list
+- Appear in both the bundle card and the unified task list
 
-**Ad hoc tasks:**
-- Created via Telegram slash command
-- Created via email forwarding
-- Standalone tasks not part of any project
-- Appear in the unified task list
+Ad-hoc tasks:
+- Created via Telegram, email, or manually
+- Standalone tasks not part of any bundle
+- Should display "ad-hoc" label (not "untitled")
+- Some require a link to the deliverable and cannot be marked as done without it (e.g., "publish article") - "required link" flag
 
-**Recurring tasks:**
-- Regular tasks like "weekly mailchimp dump" on Wednesdays
+Recurring tasks:
+- Regular tasks (e.g., "weekly mailchimp dump" on Wednesdays)
 - Automatically added to the task list on schedule
-- Configurable schedule
+- Schedule uses cron notation for full granularity
 
-### Simple Task Interface
+All tasks:
+- Each task has: date, description, status, optional comment, optional link
+- Comment is not required at creation - can be added later
+- Easy to see which bundle a task belongs to
+- Compact display: less whitespace, more info on screen - Trello-style
+- No delete action - only mark as done, archive, then delete if needed
+- Filtering by date, tag, bundle, template, user, etc.
 
-Each task should have:
+### Recurring Configs
+
+- Define schedule using cron notation (not just daily/weekly/monthly)
+- Enabled/disabled toggle
+- No "Generate Tasks" button - tasks are generated automatically
+
+### Files
+
+- Attach files to tasks
+- Files have tags for filtering
+- Separate view for files with filtering and search
+- Categories: images, invoices, other documents
+
+## Data Model
+
+### User
+
+Fields:
+- id: UUID, auto-generated
+- name: string, required
+- email: string, required
+- createdAt: ISO timestamp
+
+DynamoDB keys: PK = USER#{id}, SK = USER#{id}
+
+### Task
+
+Fields:
+- id: UUID, auto-generated
+- description: string, required
+- date: YYYY-MM-DD, required
+- status: "todo", "done", or "archived" - defaults to "todo"
+- comment: string, optional (may contain markdown links)
+- link: string, optional (URL associated with the task)
+- requiresLink: boolean, optional (if true, task cannot be marked done without a link)
+- assigneeId: string, optional (user ID)
+- bundleId: string, optional (links task to a bundle)
+- source: "manual", "template", "recurring", or "telegram"
+- templateTaskRef: string, optional (refId from the template task definition)
+- tags: array of strings, optional
+- createdAt: ISO timestamp
+- updatedAt: ISO timestamp
+
+DynamoDB keys: PK = TASK#{id}, SK = TASK#{id}
+GSI: DateIndex with PK = date, SK = TASK#{id}
+GSI: BundleIndex with PK = bundleId, SK = TASK#{id}
+
+### Bundle
+
+Fields:
+- id: UUID, auto-generated
+- title: string, required
+- anchorDate: YYYY-MM-DD, required
+- description: string, optional (may contain markdown links)
+- templateId: string, optional
+- status: "active" or "archived" - defaults to "active"
+- links: array of { name: string, url: string }, optional
+- tags: array of strings, optional (inherited from template)
+- createdAt: ISO timestamp
+- updatedAt: ISO timestamp
+
+The links array stores reference URLs associated with the bundle. Each entry has a display name and a URL. These come from template-defined link slots, Trello card attachments during migration, or can be added manually.
+
+DynamoDB keys: PK = BUNDLE#{id}, SK = BUNDLE#{id}
+
+### Template
+
+Fields:
+- id: UUID, auto-generated
+- name: string, required
+- type: string, required (e.g., "newsletter", "podcast", "webinar")
+- tags: array of strings, optional
+- defaultAssigneeId: string, optional (default user for tasks)
+- linkDefinitions: array of { name: string }, optional (link slots bundles should have)
+- taskDefinitions: array, required, each element:
+  - refId: string, required (slug identifier)
+  - description: string, required
+  - offsetDays: number, required (relative to anchor date) -- comment. not required, automatically calculated based on milestones. but for milestones it's required. 
+  - isMilestone: boolean, optional (if true, fixed to the anchor date)
+  - assigneeId: string, optional (overrides template default)
+  - instructionsUrl: string, optional (URL to instruction document)
+- triggerType: "automatic" or "manual", defaults to "manual"
+- triggerSchedule: string, optional (cron expression for auto-creating bundles, only for automatic triggers)
+- triggerLeadDays: number, optional (how many days before anchor date to create the bundle, only for automatic triggers)
+- createdAt: ISO timestamp
+- updatedAt: ISO timestamp
+
+The instructionsUrl field stores a link to a Google Doc or other document describing how to perform the task. When a template is instantiated, the instructionsUrl is stored in the created task's comment field.
+
+DynamoDB keys: PK = TEMPLATE#{id}, SK = TEMPLATE#{id}
+
+### Recurring Config
+
+Fields:
+- id: UUID, auto-generated
+- description: string, required
+- cronExpression: string, required (cron notation for schedule)
+- assigneeId: string, optional
+- enabled: boolean, defaults to true
+- createdAt: ISO timestamp
+- updatedAt: ISO timestamp
+
+DynamoDB keys: PK = RECURRING#{id}, SK = RECURRING#{id}
+
+### File
+
+Fields:
+- id: UUID, auto-generated
+- taskId: string, required (links file to a task)
+- filename: string, required
+- category: "image", "invoice", or "document"
+- tags: array of strings, optional
+- s3Key: string, required
+- createdAt: ISO timestamp
+
+DynamoDB keys: PK = FILE#{id}, SK = FILE#{id}
+GSI: TaskIndex with PK = taskId, SK = FILE#{id}
+
+## API
+
+All endpoints accept and return JSON. All endpoints are auth-gated - unauthenticated requests receive a 401 response.
+
+### Tasks API
+
+- `GET /api/tasks?date=YYYY-MM-DD` - list tasks for a specific date
+- `GET /api/tasks?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD` - list tasks in a date range
+- `POST /api/tasks` - create a task (body: { description, date, comment?, link?, requiresLink?, source?, bundleId?, assigneeId?, tags? })
+- `GET /api/tasks/:id` - get a single task
+- `PUT /api/tasks/:id` - update a task (body: subset of { description, date, status, comment, link, assigneeId, tags })
+- `DELETE /api/tasks/:id` - archive a task (soft delete)
+
+### Bundles API
+
+- `GET /api/bundles` - list all bundles
+- `POST /api/bundles` - create a bundle (body: { title, anchorDate, description?, templateId?, links? })
+- `GET /api/bundles/:id` - get a single bundle
+- `PUT /api/bundles/:id` - update a bundle (body: subset of { title, description, anchorDate, status, links, tags })
+- `PUT /api/bundles/:id/archive` - archive a bundle
+- `DELETE /api/bundles/:id` - permanently delete (only archived bundles)
+- `GET /api/bundles/:id/tasks` - list all tasks for a bundle
+
+The links field is an array of objects: [{ name: "Overview doc", url: "https://..." }, ...].
+When creating or updating a bundle, the links array replaces the entire existing links array.
+
+### Templates API
+
+- `GET /api/templates` - list all templates
+- `POST /api/templates` - create a template (body: { name, type, tags?, defaultAssigneeId?, linkDefinitions?, taskDefinitions })
+- `GET /api/templates/:id` - get a single template
+- `PUT /api/templates/:id` - update a template (body: subset of { name, type, tags, defaultAssigneeId, linkDefinitions, taskDefinitions })
+- `DELETE /api/templates/:id` - delete a template
+
+Each task definition: { refId, description, offsetDays, isMilestone?, assigneeId?, instructionsUrl? }.
+
+### Recurring API
+
+- `GET /api/recurring` - list all recurring configs
+- `POST /api/recurring` - create a recurring config (body: { description, cronExpression, assigneeId? })
+- `GET /api/recurring/:id` - get a single recurring config
+- `PUT /api/recurring/:id` - update (body: subset of { description, cronExpression, assigneeId, enabled })
+- `DELETE /api/recurring/:id` - delete a recurring config
+
+### Files API
+
+- `POST /api/files` - upload a file (multipart: file, taskId, category?, tags?)
+- `GET /api/files?taskId=...` - list files for a task
+- `GET /api/files?category=...&tag=...` - list files with filters
+- `GET /api/files/:id` - get file metadata
+- `DELETE /api/files/:id` - delete a file
+
+## UI
+
+### Home Dashboard
+
+The default landing page:
+- Shows all active bundles on the left 
+- Shows all tasks assigned to the current user on the right 
+- "Assigned to me" filter is on by default - can be toggled off to see everything
+- Tasks ordered by date, with filtering by bundle, template, tag, etc.
+
+### Task List View
+
+Compact Trello-style display. Each task shows:
 - Date
-- Task description
-- Comment field (for links to results, like process documents)
-- Status (todo/done)
+- Description (with markdown links rendered as clickable anchors)
+- Bundle link (clickable, navigates to bundle detail) or "ad-hoc" badge
+- Status checkbox
+- Comment (with markdown links)
+- Assignee
 
-When Grace completes a task (like converting a Loom video to a process document), she adds the link in the comment field and marks it done.
+Filtering by: date/date range, tag, bundle, template, user.
 
-## Value Beyond Internal Use
+When loading tasks, the app collects unique bundleId values and fetches bundle details to display bundle titles.
 
-This tool could be useful for others:
-- Shows how DataTalks Club organizes work
-- Could be shared with the community
-- Might be interesting to other small teams with similar workflows
+### Bundle List View
 
-## Potential Extensions
+Cards ordered/grouped by template type. Each card shows title, anchor date, description preview, and progress badge. Clicking navigates to detail view.
 
-**Invoice tracking:**
-- Invoice tracking functionality
-- Reminders for pending invoices
+### Bundle Detail View
+
+- Bundle title and anchor date
+- Description (with markdown links)
+- Links section: template-defined links + custom links. Inline form to add new links. Each link has a remove button.
+- Tasks table: all bundle tasks with description, date, status toggle, comment, and assignee
+
+### Templates View
+
+Cards (not a table). Each card shows name, type, tags, and task count. Clicking opens the template editor.
+
+Template editor:
+- Edit name, type, tags, default assignee
+- Task definitions list with drag-and-drop reordering
+- Editing offset days, assignee overrides, milestone flag per task
+
+### Recurring View
+
+List of recurring configs with description, cron expression, and enabled toggle.
+
+### Files View
+
+Separate view with:
+- Filtering by category (images, invoices, documents) and tags
+- Search by filename
+- File previews where applicable
+
+### Markdown Link Rendering
+
+Text fields (task description, task comment, bundle description) support markdown-style links: `[text](url)`. These are rendered as clickable HTML anchor tags that open in a new tab.
+
+The rendering function first escapes all HTML to prevent XSS, then converts markdown link patterns to anchor tags. Only the `[text](url)` pattern is supported - no other markdown formatting.
+
+## Migration
+
+The migration script (scripts/migrate-data.js) imports data from a Trello board export and CSV spreadsheets.
+
+Known issues to fix:
+- Template names are not properly extracted from Trello
+- Links are not extracted from Trello cards
+
+### Date Handling
+
+When converting Trello cards to bundles, the anchor date is determined by this fallback chain:
+1. card.due (explicit due date)
+2. Date extracted from card name (e.g., "2026-Feb-15")
+3. card.dateLastActivity (when the card was last modified)
+
+The same chain applies when assigning dates to checklist item tasks. Using dateLastActivity as the final fallback preserves historical information about when the card was actually active.
+
+### Instruction URL Extraction
+
+Trello checklist items often contain markdown links to instruction documents. The migration extracts these:
+
+Pattern: item name contains `[text](url)` - the first such link is extracted as instructionsUrl. The link text and parentheses are removed from the description.
+
+Example input: "Create a MailChimp campaign ([link](https://docs.google.com/...))"
+Result: description = "Create a MailChimp campaign", instructionsUrl = "https://docs.google.com/..."
+
+The extracted instructionsUrl is stored on the template task definition. When tasks are instantiated, the URL is placed in the task comment field. For active card tasks (not templates), the instructionsUrl is stored directly in the task comment field.
+
+### Bundle Links from Attachments
+
+Trello cards have an attachments array. Non-image attachments (non-Trello URLs) are extracted as bundle links: { name: attachment.name, url: attachment.url }. Trello-hosted attachments (URLs matching trello.com/1/cards/) are skipped.
+
+## Future Extensions
+
+- Invoice tracking and reminders for pending invoices
 - Could be separate or integrated into the task system
