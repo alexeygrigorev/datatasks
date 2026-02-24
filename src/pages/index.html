@@ -196,8 +196,7 @@
       font-size: 14px;
     }
 
-    .task-done td.task-description,
-    .task-done td.task-comment {
+    .task-done td.task-description {
       text-decoration: line-through;
       opacity: 0.6;
     }
@@ -421,6 +420,110 @@
 
     .bundle-links-list a {
       color: #2471a3;
+    }
+
+    /* Compact task table */
+    .task-table-compact th,
+    .task-table-compact td {
+      padding: 5px 8px;
+      font-size: 13px;
+    }
+
+    .task-table-compact th {
+      font-size: 11px;
+    }
+
+    /* Filter bar */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .filter-bar select {
+      padding: 5px 8px;
+      font-size: 13px;
+    }
+
+    .filter-bar label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    /* Instructions link icon */
+    .instructions-link {
+      color: #2471a3;
+      text-decoration: none;
+      font-size: 15px;
+      vertical-align: middle;
+    }
+
+    .instructions-link:hover {
+      color: #1a5276;
+    }
+
+    /* Required link inline input */
+    .required-link-wrapper {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+    }
+
+    .required-link-label {
+      color: #888;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .required-link-input {
+      padding: 2px 6px;
+      border: 1px solid #ddd;
+      border-radius: 3px;
+      font-size: 12px;
+      font-family: inherit;
+      width: 160px;
+      outline: none;
+    }
+
+    .required-link-input:focus {
+      border-color: #3498db;
+    }
+
+    /* Assignee badge */
+    .badge-assignee {
+      display: inline-block;
+      font-size: 11px;
+      padding: 1px 6px;
+      border-radius: 8px;
+      background: #f0e6ff;
+      color: #6c3483;
+      vertical-align: middle;
+    }
+
+    /* Disabled checkbox style */
+    .task-status-checkbox:disabled {
+      cursor: not-allowed;
+      opacity: 0.4;
+    }
+
+    input[type="url"] {
+      padding: 8px 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input[type="url"]:focus {
+      border-color: #3498db;
     }
   </style>
 </head>
