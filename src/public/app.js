@@ -759,6 +759,13 @@
     });
   }
 
+  // Stage transition map: current stage -> { label, nextStage }
+  var stageTransitions = {
+    'preparation': { label: 'Mark Announced', nextStage: 'announced' },
+    'announced': { label: 'Mark After-Event', nextStage: 'after-event' },
+    'after-event': { label: 'Mark Done', nextStage: 'done' },
+  };
+
   function renderBundleDetail(bundleId) {
     var backBtn = document.createElement('button');
     backBtn.className = 'btn-back';
@@ -784,48 +791,85 @@
     var banners = app.querySelectorAll('.error-banner');
     banners.forEach(function (b) { b.remove(); });
 
-    api.bundles.get(bundleId).then(function (data) {
-      var bundle = data.bundle;
+    // Load bundle, tasks, and users in parallel
+    Promise.all([
+      api.bundles.get(bundleId),
+      api.bundles.tasks(bundleId),
+      loadUsersOnce()
+    ]).then(function (results) {
+      var bundle = results[0].bundle;
+      var tasks = results[1].tasks || [];
+      var usersMap = results[2];
+
+      // Sort tasks by date ascending
+      tasks.sort(function (a, b) {
+        return (a.date || '').localeCompare(b.date || '');
+      });
+
+      var doneCount = tasks.filter(function (t) { return t.status === 'done'; }).length;
+      var totalCount = tasks.length;
+
       container.innerHTML = '';
 
-      // Header with title and delete button
+      // ── Header: emoji + title ──
       var headerDiv = document.createElement('div');
       headerDiv.className = 'bundle-detail-header';
 
       var titleEl = document.createElement('h2');
-      titleEl.textContent = bundle.title || '';
+      titleEl.textContent = (bundle.emoji ? bundle.emoji + ' ' : '') + (bundle.title || '');
       headerDiv.appendChild(titleEl);
-
-      var deleteBtn = document.createElement('button');
-      deleteBtn.className = 'btn-danger';
-      deleteBtn.textContent = 'Delete';
-      var deleteTimeout = null;
-      deleteBtn.addEventListener('click', function () {
-        if (deleteBtn.textContent === 'Confirm Delete?') {
-          clearTimeout(deleteTimeout);
-          api.bundles.delete(bundleId).then(function () {
-            currentBundleId = null;
-            renderBundles();
-          }).catch(function (err) {
-            showError('Failed to delete bundle: ' + err.message);
-          });
-        } else {
-          deleteBtn.textContent = 'Confirm Delete?';
-          deleteTimeout = setTimeout(function () {
-            deleteBtn.textContent = 'Delete';
-          }, 3000);
-        }
-      });
-      headerDiv.appendChild(deleteBtn);
       container.appendChild(headerDiv);
 
-      // Meta info
-      var meta = document.createElement('div');
-      meta.className = 'bundle-detail-meta';
-      meta.textContent = 'Anchor date: ' + (bundle.anchorDate || '');
-      container.appendChild(meta);
+      // ── Badges row: anchor date, stage, status, progress ──
+      var badgesDiv = document.createElement('div');
+      badgesDiv.className = 'bundle-detail-badges';
 
-      // Description
+      if (bundle.anchorDate) {
+        var anchorBadge = document.createElement('span');
+        anchorBadge.className = 'badge-anchor-date';
+        anchorBadge.textContent = bundle.anchorDate;
+        badgesDiv.appendChild(anchorBadge);
+      }
+
+      var stage = bundle.stage || 'preparation';
+      var stageBadge = document.createElement('span');
+      stageBadge.className = 'badge-stage ' + stage;
+      stageBadge.textContent = stage === 'after-event' ? 'after-event' : stage;
+      stageBadge.setAttribute('data-testid', 'stage-badge');
+      badgesDiv.appendChild(stageBadge);
+
+      // Stage transition button
+      var transition = stageTransitions[stage];
+      if (transition) {
+        var stageBtn = document.createElement('button');
+        stageBtn.className = 'btn-stage';
+        stageBtn.textContent = transition.label;
+        stageBtn.setAttribute('data-testid', 'stage-transition-btn');
+        stageBtn.addEventListener('click', function () {
+          api.bundles.update(bundleId, { stage: transition.nextStage }).then(function () {
+            loadBundleDetail(bundleId);
+          }).catch(function (err) {
+            showError('Failed to update stage: ' + err.message);
+          });
+        });
+        badgesDiv.appendChild(stageBtn);
+      }
+
+      var statusBadge = document.createElement('span');
+      statusBadge.className = 'badge-status ' + (bundle.status || 'active');
+      statusBadge.textContent = bundle.status || 'active';
+      badgesDiv.appendChild(statusBadge);
+
+      var progressBadgeClass = 'progress-badge' + (totalCount > 0 && doneCount === totalCount ? ' all-done' : '');
+      var progressBadge = document.createElement('span');
+      progressBadge.className = progressBadgeClass;
+      progressBadge.textContent = doneCount + '/' + totalCount + ' done';
+      progressBadge.setAttribute('data-testid', 'progress-badge');
+      badgesDiv.appendChild(progressBadge);
+
+      container.appendChild(badgesDiv);
+
+      // ── Description ──
       if (bundle.description) {
         var descDiv = document.createElement('div');
         descDiv.className = 'bundle-detail-desc';
@@ -833,71 +877,112 @@
         container.appendChild(descDiv);
       }
 
-      // Links section
-      var linksSection = document.createElement('div');
-      linksSection.className = 'bundle-links-section';
-      var linksHeader = document.createElement('h3');
-      linksHeader.textContent = 'Links';
-      linksHeader.style.marginBottom = '8px';
-      linksSection.appendChild(linksHeader);
+      // ── References section (read-only) ──
+      var refs = bundle.references || [];
+      if (refs.length > 0) {
+        var refsSection = document.createElement('div');
+        refsSection.className = 'references-section';
+        var refsHeader = document.createElement('h3');
+        refsHeader.textContent = 'References';
+        refsSection.appendChild(refsHeader);
 
-      var linksList = document.createElement('div');
-      linksList.className = 'bundle-links-list';
-      var bundleLinks = bundle.links || [];
-      if (bundleLinks.length === 0) {
-        linksList.innerHTML = '<div class="empty-state" style="padding:8px 0;">No links yet.</div>';
-      } else {
-        bundleLinks.forEach(function (link, idx) {
-          var linkRow = document.createElement('div');
-          linkRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:4px;';
-          linkRow.innerHTML =
-            '<a href="' + escapeHtml(link.url) + '" target="_blank" rel="noopener">' + escapeHtml(link.name || link.url) + '</a>' +
-            '<button class="btn-danger" style="padding:2px 8px;font-size:12px;" data-remove-link="' + idx + '">x</button>';
-          linksList.appendChild(linkRow);
+        refs.forEach(function (ref) {
+          var a = document.createElement('a');
+          a.className = 'reference-link';
+          a.href = ref.url || '#';
+          a.target = '_blank';
+          a.rel = 'noopener';
+          a.textContent = ref.name || ref.url;
+          refsSection.appendChild(a);
         });
+
+        container.appendChild(refsSection);
       }
-      linksSection.appendChild(linksList);
+
+      // ── Bundle Links section (editable) ──
+      var bundleLinksSection = document.createElement('div');
+      bundleLinksSection.className = 'bundle-links-editable';
+      var blHeader = document.createElement('h3');
+      blHeader.textContent = 'Bundle Links';
+      bundleLinksSection.appendChild(blHeader);
+
+      var currentBundleLinks = bundle.bundleLinks || [];
+
+      currentBundleLinks.forEach(function (bl, idx) {
+        var row = document.createElement('div');
+        row.className = 'bundle-link-row';
+
+        var label = document.createElement('span');
+        label.className = 'bundle-link-label';
+        label.textContent = bl.name;
+        row.appendChild(label);
+
+        var urlInput = document.createElement('input');
+        urlInput.type = 'text';
+        urlInput.className = 'bundle-link-url-input';
+        urlInput.placeholder = 'https://...';
+        urlInput.value = bl.url || '';
+        urlInput.setAttribute('data-link-index', idx);
+        row.appendChild(urlInput);
+
+        var saveBtn = document.createElement('button');
+        saveBtn.className = 'btn-save-link';
+        saveBtn.textContent = 'Save';
+        saveBtn.setAttribute('data-link-save-index', idx);
+        saveBtn.addEventListener('click', function () {
+          var newUrl = urlInput.value.trim();
+          var updatedLinks = currentBundleLinks.map(function (link, i) {
+            if (i === idx) {
+              return { name: link.name, url: newUrl };
+            }
+            return { name: link.name, url: link.url };
+          });
+          api.bundles.update(bundleId, { bundleLinks: updatedLinks }).then(function () {
+            loadBundleDetail(bundleId);
+          }).catch(function (err) {
+            showError('Failed to save link: ' + err.message);
+          });
+        });
+        row.appendChild(saveBtn);
+
+        bundleLinksSection.appendChild(row);
+      });
 
       // Add link form
       var addLinkForm = document.createElement('div');
-      addLinkForm.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:8px;';
+      addLinkForm.className = 'add-link-form';
       addLinkForm.innerHTML =
-        '<input type="text" id="link-name" placeholder="Link name" style="width:150px;" />' +
-        '<input type="url" id="link-url" placeholder="https://..." style="width:250px;" />' +
-        '<button class="btn-primary" id="add-link-btn" style="padding:6px 12px;">Add</button>';
-      linksSection.appendChild(addLinkForm);
-      container.appendChild(linksSection);
+        '<input type="text" id="add-bl-name" placeholder="Link name" style="width:130px;" />' +
+        '<input type="text" id="add-bl-url" placeholder="https://..." style="width:250px;" />' +
+        '<button class="btn-primary" id="add-bl-btn" style="padding:5px 12px;font-size:12px;">Add</button>';
+      bundleLinksSection.appendChild(addLinkForm);
+      container.appendChild(bundleLinksSection);
 
       // Add link handler
-      document.getElementById('add-link-btn').addEventListener('click', function () {
-        var name = document.getElementById('link-name').value.trim();
-        var url = document.getElementById('link-url').value.trim();
-        if (!url) {
-          showError('URL is required.');
-          return;
-        }
-        var updatedLinks = (bundle.links || []).concat([{ name: name || url, url: url }]);
-        api.bundles.update(bundleId, { links: updatedLinks }).then(function () {
-          loadBundleDetail(bundleId);
-        }).catch(function (err) {
-          showError('Failed to add link: ' + err.message);
-        });
-      });
-
-      // Remove link handlers
-      linksSection.querySelectorAll('[data-remove-link]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          var idx = parseInt(btn.getAttribute('data-remove-link'), 10);
-          var updatedLinks = (bundle.links || []).filter(function (_, i) { return i !== idx; });
-          api.bundles.update(bundleId, { links: updatedLinks }).then(function () {
-            loadBundleDetail(bundleId);
-          }).catch(function (err) {
-            showError('Failed to remove link: ' + err.message);
+      setTimeout(function () {
+        var addBtn = document.getElementById('add-bl-btn');
+        if (addBtn) {
+          addBtn.addEventListener('click', function () {
+            var name = document.getElementById('add-bl-name').value.trim();
+            var url = document.getElementById('add-bl-url').value.trim();
+            if (!name) {
+              showError('Link name is required.');
+              return;
+            }
+            var updatedLinks = currentBundleLinks.map(function (l) {
+              return { name: l.name, url: l.url };
+            });
+            updatedLinks.push({ name: name, url: url || '' });
+            api.bundles.update(bundleId, { bundleLinks: updatedLinks }).then(function () {
+              loadBundleDetail(bundleId);
+            }).catch(function (err) {
+              showError('Failed to add link: ' + err.message);
+            });
           });
-        });
-      });
+        }
+      }, 0);
 
-      // Tasks section
+      // ── Tasks table ──
       var tasksHeader = document.createElement('h3');
       tasksHeader.textContent = 'Tasks';
       tasksHeader.style.marginBottom = '12px';
@@ -905,59 +990,178 @@
 
       var tasksContainer = document.createElement('div');
       tasksContainer.id = 'bundle-tasks-table';
-      tasksContainer.innerHTML = '<p>Loading tasks...</p>';
       container.appendChild(tasksContainer);
 
-      loadBundleTasks(bundleId);
+      renderBundleTasksTable(bundleId, tasks, usersMap, bundle);
     }).catch(function (err) {
       container.innerHTML = '';
       showError('Failed to load bundle: ' + err.message);
     });
   }
 
-  function loadBundleTasks(bundleId) {
+  function renderBundleTasksTable(bundleId, tasks, usersMap, bundle) {
     var container = document.getElementById('bundle-tasks-table');
     if (!container) return;
 
-    api.bundles.tasks(bundleId).then(function (data) {
-      var tasks = data.tasks || [];
-      if (tasks.length === 0) {
-        container.innerHTML = '<div class="empty-state">No tasks for this bundle.</div>';
-        return;
-      }
-      var html = '<table><thead><tr>' +
-        '<th>Description</th><th>Date</th><th>Status</th><th>Comment</th>' +
-        '</tr></thead><tbody>';
-      tasks.forEach(function (t) {
-        var statusClass = t.status === 'done' ? 'status-done' : 'status-todo';
-        html += '<tr>' +
-          '<td>' + renderMarkdownLinks(t.description) + '</td>' +
-          '<td>' + escapeHtml(t.date || '') + '</td>' +
-          '<td class="' + statusClass + '" data-task-id="' + t.id + '" data-status="' + t.status + '">' +
-            escapeHtml(t.status || 'todo') + '</td>' +
-          '<td>' + renderMarkdownLinks(t.comment || '') + '</td>' +
-          '</tr>';
-      });
-      html += '</tbody></table>';
-      container.innerHTML = html;
+    if (tasks.length === 0) {
+      container.innerHTML = '<div class="empty-state">No tasks for this bundle.</div>';
+      return;
+    }
 
-      // Status toggle
-      container.querySelectorAll('[data-task-id]').forEach(function (el) {
-        el.addEventListener('click', function () {
-          var id = el.getAttribute('data-task-id');
-          var current = el.getAttribute('data-status');
-          var next = current === 'done' ? 'todo' : 'done';
-          api.tasks.update(id, { status: next }).then(function () {
-            loadBundleTasks(bundleId);
-          }).catch(function (err) {
-            showError('Failed to update task: ' + err.message);
-          });
+    var table = document.createElement('table');
+    table.className = 'bundle-tasks-table';
+
+    var thead = document.createElement('thead');
+    thead.innerHTML = '<tr>' +
+      '<th style="width:30px;"></th>' +
+      '<th>Description</th>' +
+      '<th>Date</th>' +
+      '<th>Assignee</th>' +
+      '<th style="width:30px;">Info</th>' +
+      '<th>Link</th>' +
+      '</tr>';
+    table.appendChild(thead);
+
+    var tbody = document.createElement('tbody');
+
+    tasks.forEach(function (t) {
+      var isDone = t.status === 'done';
+      var hasRequiredLink = !!t.requiredLinkName;
+      var linkFilled = !!(t.link && t.link.trim());
+      var checkboxDisabled = hasRequiredLink && !linkFilled;
+
+      var tr = document.createElement('tr');
+      tr.className = isDone ? 'task-done' : '';
+      tr.setAttribute('data-task-row', t.id);
+
+      // Checkbox cell
+      var tdCheck = document.createElement('td');
+      var checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'task-status-checkbox';
+      checkbox.checked = isDone;
+      checkbox.disabled = checkboxDisabled;
+      checkbox.setAttribute('data-task-checkbox', t.id);
+      checkbox.addEventListener('change', function () {
+        var newStatus = checkbox.checked ? 'done' : 'todo';
+        api.tasks.update(t.id, { status: newStatus }).then(function () {
+          loadBundleDetail(bundleId);
+        }).catch(function (err) {
+          showError('Failed to update task: ' + err.message);
+          checkbox.checked = !checkbox.checked;
         });
       });
-    }).catch(function (err) {
-      container.innerHTML = '';
-      showError('Failed to load bundle tasks: ' + err.message);
+      tdCheck.appendChild(checkbox);
+      tr.appendChild(tdCheck);
+
+      // Description cell
+      var tdDesc = document.createElement('td');
+      tdDesc.className = 'task-description';
+      tdDesc.innerHTML = renderMarkdownLinks(t.description || '');
+
+      // Required link input inline under description
+      if (hasRequiredLink) {
+        var wrapper = document.createElement('div');
+        wrapper.className = 'required-link-wrapper';
+        wrapper.style.marginTop = '4px';
+
+        var linkLabel = document.createElement('span');
+        linkLabel.className = 'required-link-label';
+        linkLabel.textContent = t.requiredLinkName + ':';
+        wrapper.appendChild(linkLabel);
+
+        var linkInput = document.createElement('input');
+        linkInput.type = 'text';
+        linkInput.className = 'required-link-input';
+        linkInput.placeholder = 'https://...';
+        linkInput.value = t.link || '';
+        linkInput.setAttribute('data-required-link-task', t.id);
+        wrapper.appendChild(linkInput);
+
+        var saveReqBtn = document.createElement('button');
+        saveReqBtn.className = 'btn-save-link';
+        saveReqBtn.textContent = 'Save';
+        saveReqBtn.style.fontSize = '11px';
+        saveReqBtn.style.padding = '2px 8px';
+        saveReqBtn.setAttribute('data-save-required-link', t.id);
+        saveReqBtn.addEventListener('click', (function (task) {
+          return function () {
+            var input = container.querySelector('[data-required-link-task="' + task.id + '"]');
+            var newUrl = input ? input.value.trim() : '';
+
+            // Update task link
+            var taskUpdatePromise = api.tasks.update(task.id, { link: newUrl });
+
+            // Also update the bundle's bundleLinks entry
+            var currentLinks = (bundle.bundleLinks || []).map(function (bl) {
+              if (bl.name === task.requiredLinkName) {
+                return { name: bl.name, url: newUrl };
+              }
+              return { name: bl.name, url: bl.url };
+            });
+            var bundleUpdatePromise = api.bundles.update(bundleId, { bundleLinks: currentLinks });
+
+            Promise.all([taskUpdatePromise, bundleUpdatePromise]).then(function () {
+              loadBundleDetail(bundleId);
+            }).catch(function (err) {
+              showError('Failed to save link: ' + err.message);
+            });
+          };
+        })(t));
+        wrapper.appendChild(saveReqBtn);
+
+        tdDesc.appendChild(wrapper);
+      }
+      tr.appendChild(tdDesc);
+
+      // Date cell
+      var tdDate = document.createElement('td');
+      tdDate.textContent = t.date || '';
+      tr.appendChild(tdDate);
+
+      // Assignee cell
+      var tdAssignee = document.createElement('td');
+      if (t.assigneeId && usersMap[t.assigneeId]) {
+        var assigneeBadge = document.createElement('span');
+        assigneeBadge.className = 'badge-assignee';
+        assigneeBadge.textContent = usersMap[t.assigneeId].name;
+        tdAssignee.appendChild(assigneeBadge);
+      }
+      tr.appendChild(tdAssignee);
+
+      // Instructions URL cell
+      var tdInstructions = document.createElement('td');
+      if (t.instructionsUrl) {
+        var instrLink = document.createElement('a');
+        instrLink.className = 'instructions-link';
+        instrLink.href = t.instructionsUrl;
+        instrLink.target = '_blank';
+        instrLink.rel = 'noopener';
+        instrLink.title = 'Instructions';
+        instrLink.innerHTML = '&#x1F4CB;';
+        tdInstructions.appendChild(instrLink);
+      }
+      tr.appendChild(tdInstructions);
+
+      // Link cell (for non-required links, show the link if available)
+      var tdLink = document.createElement('td');
+      if (!hasRequiredLink && t.link) {
+        var linkAnchor = document.createElement('a');
+        linkAnchor.href = t.link;
+        linkAnchor.target = '_blank';
+        linkAnchor.rel = 'noopener';
+        linkAnchor.textContent = 'Link';
+        linkAnchor.style.fontSize = '12px';
+        tdLink.appendChild(linkAnchor);
+      }
+      tr.appendChild(tdLink);
+
+      tbody.appendChild(tr);
     });
+
+    table.appendChild(tbody);
+    container.innerHTML = '';
+    container.appendChild(table);
   }
 
   // ── Templates View ──────────────────────────────────────────────
