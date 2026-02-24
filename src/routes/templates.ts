@@ -11,6 +11,8 @@ import type { LambdaResponse } from '../types';
 
 const JSON_HEADERS: Record<string, string> = { 'Content-Type': 'application/json' };
 
+const VALID_STAGES = ['preparation', 'announced', 'after-event', 'done'];
+
 /**
  * Validate an array of task definitions.
  * Returns an error string if invalid, or null if valid.
@@ -33,6 +35,23 @@ function validateTaskDefinitions(taskDefinitions: unknown): string | null {
     }
     if (td.instructionsUrl !== undefined && typeof td.instructionsUrl !== 'string') {
       return `taskDefinitions[${i}].instructionsUrl must be a string`;
+    }
+    if (td.isMilestone !== undefined && typeof td.isMilestone !== 'boolean') {
+      return `taskDefinitions[${i}].isMilestone must be a boolean`;
+    }
+    if (td.stageOnComplete !== undefined) {
+      if (typeof td.stageOnComplete !== 'string' || !VALID_STAGES.includes(td.stageOnComplete)) {
+        return `taskDefinitions[${i}].stageOnComplete must be one of: ${VALID_STAGES.join(', ')}`;
+      }
+    }
+    if (td.assigneeId !== undefined && typeof td.assigneeId !== 'string') {
+      return `taskDefinitions[${i}].assigneeId must be a string`;
+    }
+    if (td.requiredLinkName !== undefined && typeof td.requiredLinkName !== 'string') {
+      return `taskDefinitions[${i}].requiredLinkName must be a string`;
+    }
+    if (td.requiresFile !== undefined && typeof td.requiresFile !== 'boolean') {
+      return `taskDefinitions[${i}].requiresFile must be a boolean`;
     }
   }
 
@@ -142,13 +161,24 @@ async function handleCollection(method: string, rawBody: string | null, client: 
       };
     }
 
-    const templateData = {
+    const templateData: Record<string, unknown> = {
       name: body.name,
       type: body.type,
       taskDefinitions: body.taskDefinitions,
     };
 
-    const template = await createTemplate(client, templateData as Record<string, unknown>);
+    // Pick optional template-level fields
+    const optionalFields = [
+      'emoji', 'tags', 'defaultAssigneeId', 'references',
+      'bundleLinkDefinitions', 'triggerType', 'triggerSchedule', 'triggerLeadDays',
+    ];
+    for (const field of optionalFields) {
+      if (body[field] !== undefined) {
+        templateData[field] = body[field];
+      }
+    }
+
+    const template = await createTemplate(client, templateData);
     return {
       statusCode: 201,
       headers: JSON_HEADERS,
@@ -216,7 +246,11 @@ async function handleSingle(method: string, id: string, rawBody: string | null, 
     }
 
     // Only allow updating known fields
-    const allowedFields = ['name', 'type', 'taskDefinitions'];
+    const allowedFields = [
+      'name', 'type', 'taskDefinitions',
+      'emoji', 'tags', 'defaultAssigneeId', 'references',
+      'bundleLinkDefinitions', 'triggerType', 'triggerSchedule', 'triggerLeadDays',
+    ];
     const updates: Record<string, unknown> = {};
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
