@@ -36,18 +36,39 @@ export interface Bundle {
 
 // --- Template ---
 
+export interface Reference {
+  name: string;
+  url: string;
+}
+
+export interface BundleLinkDefinition {
+  name: string;
+}
+
 export interface TaskDefinition {
   refId: string;
   description: string;
   offsetDays: number;
+  isMilestone?: boolean;
+  stageOnComplete?: string;
+  assigneeId?: string;
   instructionsUrl?: string;
+  requiredLinkName?: string;
+  requiresFile?: boolean;
 }
 
 export interface Template {
   id: string;
   name: string;
   type?: string;
-  category?: string;
+  emoji?: string;
+  tags?: string[];
+  defaultAssigneeId?: string;
+  references?: Reference[];
+  bundleLinkDefinitions?: BundleLinkDefinition[];
+  triggerType?: string;
+  triggerSchedule?: string;
+  triggerLeadDays?: number;
   taskDefinitions?: TaskDefinition[];
   createdAt: string;
   updatedAt: string;

@@ -475,6 +475,343 @@ describe('API — Templates', () => {
     });
   });
 
+  // ---- New fields (issue #17) ----
+
+  describe('POST /api/templates with new fields', () => {
+    it('creates a template with all new template-level fields', async () => {
+      const res = await invoke('POST', '/api/templates', {
+        name: 'Newsletter Weekly',
+        type: 'newsletter',
+        emoji: '\u{1F4F0}',
+        tags: ['newsletter'],
+        defaultAssigneeId: 'user-grace',
+        references: [{ name: 'Style guide', url: 'https://docs.google.com/style' }],
+        bundleLinkDefinitions: [{ name: 'Luma' }, { name: 'YouTube' }],
+        triggerType: 'automatic',
+        triggerSchedule: '0 9 * * 1',
+        triggerLeadDays: 14,
+        taskDefinitions: [
+          { refId: 'draft', description: 'Write draft', offsetDays: -7 },
+        ],
+      });
+
+      assert.strictEqual(res.statusCode, 201);
+      const body = JSON.parse(res.body);
+      const t = body.template;
+      assert.strictEqual(t.emoji, '\u{1F4F0}');
+      assert.deepStrictEqual(t.tags, ['newsletter']);
+      assert.strictEqual(t.defaultAssigneeId, 'user-grace');
+      assert.deepStrictEqual(t.references, [{ name: 'Style guide', url: 'https://docs.google.com/style' }]);
+      assert.deepStrictEqual(t.bundleLinkDefinitions, [{ name: 'Luma' }, { name: 'YouTube' }]);
+      assert.strictEqual(t.triggerType, 'automatic');
+      assert.strictEqual(t.triggerSchedule, '0 9 * * 1');
+      assert.strictEqual(t.triggerLeadDays, 14);
+    });
+
+    it('creates a template with only required fields (backward compatibility)', async () => {
+      const res = await invoke('POST', '/api/templates', {
+        name: 'Minimal Template',
+        type: 'test',
+        taskDefinitions: [
+          { refId: 'a', description: 'Task A', offsetDays: 0 },
+        ],
+      });
+
+      assert.strictEqual(res.statusCode, 201);
+      const body = JSON.parse(res.body);
+      const t = body.template;
+      assert.strictEqual(t.name, 'Minimal Template');
+      assert.strictEqual(t.type, 'test');
+      // Optional fields should be absent
+      assert.strictEqual(t.emoji, undefined);
+      assert.strictEqual(t.tags, undefined);
+      assert.strictEqual(t.defaultAssigneeId, undefined);
+      assert.strictEqual(t.references, undefined);
+      assert.strictEqual(t.bundleLinkDefinitions, undefined);
+      assert.strictEqual(t.triggerType, undefined);
+      assert.strictEqual(t.triggerSchedule, undefined);
+      assert.strictEqual(t.triggerLeadDays, undefined);
+    });
+
+    it('creates a template with enriched task definitions', async () => {
+      const res = await invoke('POST', '/api/templates', {
+        name: 'Webinar',
+        type: 'webinar',
+        taskDefinitions: [
+          {
+            refId: 'announce',
+            description: 'Announce event',
+            offsetDays: -7,
+            isMilestone: false,
+            assigneeId: 'user-valeriia',
+            instructionsUrl: 'https://docs.google.com/announce',
+            requiredLinkName: 'Luma',
+          },
+          {
+            refId: 'stream',
+            description: 'Actual stream',
+            offsetDays: 0,
+            isMilestone: true,
+            stageOnComplete: 'after-event',
+            requiresFile: true,
+          },
+        ],
+      });
+
+      assert.strictEqual(res.statusCode, 201);
+      const body = JSON.parse(res.body);
+      const tds = body.template.taskDefinitions;
+      assert.strictEqual(tds.length, 2);
+
+      assert.strictEqual(tds[0].isMilestone, false);
+      assert.strictEqual(tds[0].assigneeId, 'user-valeriia');
+      assert.strictEqual(tds[0].instructionsUrl, 'https://docs.google.com/announce');
+      assert.strictEqual(tds[0].requiredLinkName, 'Luma');
+
+      assert.strictEqual(tds[1].isMilestone, true);
+      assert.strictEqual(tds[1].stageOnComplete, 'after-event');
+      assert.strictEqual(tds[1].requiresFile, true);
+    });
+
+    it('rejects invalid stageOnComplete value', async () => {
+      const res = await invoke('POST', '/api/templates', {
+        name: 'Bad Stage',
+        type: 'test',
+        taskDefinitions: [
+          { refId: 'a', description: 'Task A', offsetDays: 0, stageOnComplete: 'invalid-stage' },
+        ],
+      });
+
+      assert.strictEqual(res.statusCode, 400);
+      const body = JSON.parse(res.body);
+      assert.ok(body.error.includes('stageOnComplete'));
+    });
+
+    it('rejects non-boolean isMilestone value', async () => {
+      const res = await invoke('POST', '/api/templates', {
+        name: 'Bad Milestone',
+        type: 'test',
+        taskDefinitions: [
+          { refId: 'a', description: 'Task A', offsetDays: 0, isMilestone: 'yes' },
+        ],
+      });
+
+      assert.strictEqual(res.statusCode, 400);
+      const body = JSON.parse(res.body);
+      assert.ok(body.error.includes('isMilestone'));
+      assert.ok(body.error.includes('boolean'));
+    });
+
+    it('rejects non-boolean requiresFile value', async () => {
+      const res = await invoke('POST', '/api/templates', {
+        name: 'Bad RequiresFile',
+        type: 'test',
+        taskDefinitions: [
+          { refId: 'a', description: 'Task A', offsetDays: 0, requiresFile: 'yes' },
+        ],
+      });
+
+      assert.strictEqual(res.statusCode, 400);
+      const body = JSON.parse(res.body);
+      assert.ok(body.error.includes('requiresFile'));
+      assert.ok(body.error.includes('boolean'));
+    });
+
+    it('rejects non-string assigneeId in task definition', async () => {
+      const res = await invoke('POST', '/api/templates', {
+        name: 'Bad AssigneeId',
+        type: 'test',
+        taskDefinitions: [
+          { refId: 'a', description: 'Task A', offsetDays: 0, assigneeId: 123 },
+        ],
+      });
+
+      assert.strictEqual(res.statusCode, 400);
+      const body = JSON.parse(res.body);
+      assert.ok(body.error.includes('assigneeId'));
+    });
+
+    it('rejects non-string requiredLinkName in task definition', async () => {
+      const res = await invoke('POST', '/api/templates', {
+        name: 'Bad RequiredLinkName',
+        type: 'test',
+        taskDefinitions: [
+          { refId: 'a', description: 'Task A', offsetDays: 0, requiredLinkName: 42 },
+        ],
+      });
+
+      assert.strictEqual(res.statusCode, 400);
+      const body = JSON.parse(res.body);
+      assert.ok(body.error.includes('requiredLinkName'));
+    });
+  });
+
+  describe('PUT /api/templates/:id with new fields', () => {
+    it('updates emoji, tags, and references', async () => {
+      const created = await createTemplate(client, {
+        name: 'Basic Template',
+        type: 'test',
+        taskDefinitions: [
+          { refId: 'a', description: 'Task A', offsetDays: 0 },
+        ],
+      });
+
+      const res = await invoke('PUT', `/api/templates/${created.id}`, {
+        emoji: '\u{1F399}\u{FE0F}',
+        tags: ['podcast', 'content'],
+        references: [{ name: 'Recording guide', url: 'https://docs.google.com/rec' }],
+      });
+
+      assert.strictEqual(res.statusCode, 200);
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.template.emoji, '\u{1F399}\u{FE0F}');
+      assert.deepStrictEqual(body.template.tags, ['podcast', 'content']);
+      assert.deepStrictEqual(body.template.references, [{ name: 'Recording guide', url: 'https://docs.google.com/rec' }]);
+    });
+
+    it('updates trigger configuration', async () => {
+      const created = await createTemplate(client, {
+        name: 'No Trigger',
+        type: 'test',
+        taskDefinitions: [
+          { refId: 'a', description: 'Task A', offsetDays: 0 },
+        ],
+      });
+
+      const res = await invoke('PUT', `/api/templates/${created.id}`, {
+        triggerType: 'automatic',
+        triggerSchedule: '0 9 * * 1',
+        triggerLeadDays: 14,
+      });
+
+      assert.strictEqual(res.statusCode, 200);
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.template.triggerType, 'automatic');
+      assert.strictEqual(body.template.triggerSchedule, '0 9 * * 1');
+      assert.strictEqual(body.template.triggerLeadDays, 14);
+    });
+
+    it('updates task definitions with new fields', async () => {
+      const created = await createTemplate(client, {
+        name: 'Update Tasks',
+        type: 'test',
+        taskDefinitions: [
+          { refId: 'a', description: 'Task A', offsetDays: 0 },
+        ],
+      });
+
+      const res = await invoke('PUT', `/api/templates/${created.id}`, {
+        taskDefinitions: [
+          {
+            refId: 'announce',
+            description: 'Announce event',
+            offsetDays: -7,
+            isMilestone: false,
+            stageOnComplete: 'announced',
+            requiresFile: true,
+          },
+        ],
+      });
+
+      assert.strictEqual(res.statusCode, 200);
+      const body = JSON.parse(res.body);
+      const td = body.template.taskDefinitions[0];
+      assert.strictEqual(td.isMilestone, false);
+      assert.strictEqual(td.stageOnComplete, 'announced');
+      assert.strictEqual(td.requiresFile, true);
+    });
+
+    it('rejects invalid stageOnComplete in PUT', async () => {
+      const created = await createTemplate(client, {
+        name: 'PUT Validation',
+        type: 'test',
+        taskDefinitions: [
+          { refId: 'a', description: 'Task A', offsetDays: 0 },
+        ],
+      });
+
+      const res = await invoke('PUT', `/api/templates/${created.id}`, {
+        taskDefinitions: [
+          { refId: 'a', description: 'Task A', offsetDays: 0, stageOnComplete: 'bad-value' },
+        ],
+      });
+
+      assert.strictEqual(res.statusCode, 400);
+      const body = JSON.parse(res.body);
+      assert.ok(body.error.includes('stageOnComplete'));
+    });
+  });
+
+  describe('GET /api/templates/:id with new fields', () => {
+    it('returns all new fields when present', async () => {
+      const created = await createTemplate(client, {
+        name: 'Full Template',
+        type: 'newsletter',
+        emoji: '\u{1F4F0}',
+        tags: ['weekly'],
+        defaultAssigneeId: 'user-grace',
+        references: [{ name: 'Guide', url: 'https://example.com' }],
+        bundleLinkDefinitions: [{ name: 'Luma' }],
+        triggerType: 'automatic',
+        triggerSchedule: '0 9 * * 1',
+        triggerLeadDays: 7,
+        taskDefinitions: [
+          {
+            refId: 'task1',
+            description: 'Do stuff',
+            offsetDays: 0,
+            isMilestone: true,
+            stageOnComplete: 'done',
+            assigneeId: 'user-valeriia',
+            requiresFile: false,
+            requiredLinkName: 'Luma',
+          },
+        ],
+      });
+
+      const res = await invoke('GET', `/api/templates/${created.id}`);
+      assert.strictEqual(res.statusCode, 200);
+
+      const body = JSON.parse(res.body);
+      const t = body.template;
+      assert.strictEqual(t.emoji, '\u{1F4F0}');
+      assert.deepStrictEqual(t.tags, ['weekly']);
+      assert.strictEqual(t.defaultAssigneeId, 'user-grace');
+      assert.deepStrictEqual(t.references, [{ name: 'Guide', url: 'https://example.com' }]);
+      assert.deepStrictEqual(t.bundleLinkDefinitions, [{ name: 'Luma' }]);
+      assert.strictEqual(t.triggerType, 'automatic');
+      assert.strictEqual(t.triggerSchedule, '0 9 * * 1');
+      assert.strictEqual(t.triggerLeadDays, 7);
+
+      const td = t.taskDefinitions[0];
+      assert.strictEqual(td.isMilestone, true);
+      assert.strictEqual(td.stageOnComplete, 'done');
+      assert.strictEqual(td.assigneeId, 'user-valeriia');
+      assert.strictEqual(td.requiresFile, false);
+      assert.strictEqual(td.requiredLinkName, 'Luma');
+    });
+
+    it('returns template without new fields (backward compatibility)', async () => {
+      const created = await createTemplate(client, {
+        name: 'Old Template',
+        type: 'test',
+        taskDefinitions: [
+          { refId: 'a', description: 'Task A', offsetDays: 0 },
+        ],
+      });
+
+      const res = await invoke('GET', `/api/templates/${created.id}`);
+      assert.strictEqual(res.statusCode, 200);
+
+      const body = JSON.parse(res.body);
+      const t = body.template;
+      assert.strictEqual(t.name, 'Old Template');
+      assert.strictEqual(t.emoji, undefined);
+      assert.strictEqual(t.tags, undefined);
+      assert.strictEqual(t.defaultAssigneeId, undefined);
+    });
+  });
+
   // ---- Content-Type header ----
 
   describe('Content-Type header', () => {
