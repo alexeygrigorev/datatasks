@@ -13,7 +13,12 @@ const server = http.createServer(async (req, res) => {
   for await (const chunk of req) {
     chunks.push(chunk as Buffer);
   }
-  const body = chunks.length > 0 ? Buffer.concat(chunks).toString() : null;
+  // Use binary encoding for multipart requests to preserve file content
+  const contentType = req.headers['content-type'] || '';
+  const isMultipart = contentType.includes('multipart/form-data');
+  const body = chunks.length > 0
+    ? Buffer.concat(chunks).toString(isMultipart ? 'binary' : 'utf-8')
+    : null;
 
   // Build query string parameters
   const queryStringParameters: Record<string, string> = {};
@@ -44,7 +49,13 @@ const server = http.createServer(async (req, res) => {
     }
 
     res.writeHead(result.statusCode);
-    res.end(result.body || '');
+    // If Content-Disposition is set, treat the body as binary
+    const hasDownload = result.headers?.['Content-Disposition'];
+    if (hasDownload && result.body) {
+      res.end(Buffer.from(result.body, 'binary'));
+    } else {
+      res.end(result.body || '');
+    }
   } catch (err: unknown) {
     console.error('Handler error:', err);
     res.writeHead(500);
