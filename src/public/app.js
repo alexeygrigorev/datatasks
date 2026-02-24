@@ -776,22 +776,29 @@
 
   // ── Templates View ──────────────────────────────────────────────
 
+  var currentTemplateId = null;
+
   function renderTemplates() {
     clearApp();
+
+    if (currentTemplateId) {
+      renderTemplateEditor(currentTemplateId);
+      return;
+    }
 
     var header = document.createElement('h2');
     header.textContent = 'Templates';
     app.appendChild(header);
 
-    var tableContainer = document.createElement('div');
-    tableContainer.id = 'templates-table';
-    app.appendChild(tableContainer);
+    var cardsContainer = document.createElement('div');
+    cardsContainer.id = 'templates-container';
+    app.appendChild(cardsContainer);
 
-    loadTemplates();
+    loadTemplateCards();
   }
 
-  function loadTemplates() {
-    var container = document.getElementById('templates-table');
+  function loadTemplateCards() {
+    var container = document.getElementById('templates-container');
     if (!container) return;
     container.innerHTML = '<p>Loading...</p>';
 
@@ -804,22 +811,599 @@
         container.innerHTML = '<div class="empty-state">No templates yet.</div>';
         return;
       }
-      var html = '<table><thead><tr>' +
-        '<th>Name</th><th>Description</th><th>Task Count</th>' +
-        '</tr></thead><tbody>';
+
+      container.innerHTML = '';
+      var cardsDiv = document.createElement('div');
+      cardsDiv.className = 'template-cards';
+
       templates.forEach(function (t) {
         var taskCount = (t.taskDefinitions && t.taskDefinitions.length) || 0;
-        html += '<tr>' +
-          '<td>' + escapeHtml(t.name || '') + '</td>' +
-          '<td>' + escapeHtml(t.description || '') + '</td>' +
-          '<td>' + taskCount + '</td>' +
-          '</tr>';
+        var triggerType = t.triggerType || 'manual';
+        var tags = t.tags || [];
+
+        var card = document.createElement('div');
+        card.className = 'template-card';
+        card.setAttribute('data-template-id', t.id);
+
+        var titleText = (t.emoji ? t.emoji + ' ' : '') + escapeHtml(t.name || 'Unnamed');
+        var titleDiv = document.createElement('div');
+        titleDiv.className = 'template-card-title';
+        titleDiv.innerHTML = titleText;
+        card.appendChild(titleDiv);
+
+        var metaDiv = document.createElement('div');
+        metaDiv.className = 'template-card-meta';
+
+        if (t.type) {
+          var typeBadge = document.createElement('span');
+          typeBadge.className = 'badge-type';
+          typeBadge.textContent = t.type;
+          metaDiv.appendChild(typeBadge);
+        }
+
+        tags.forEach(function (tag) {
+          var tagBadge = document.createElement('span');
+          tagBadge.className = 'badge-tag';
+          tagBadge.textContent = tag;
+          metaDiv.appendChild(tagBadge);
+        });
+
+        var triggerBadge = document.createElement('span');
+        triggerBadge.className = 'badge-trigger ' + triggerType;
+        triggerBadge.textContent = triggerType;
+        metaDiv.appendChild(triggerBadge);
+
+        card.appendChild(metaDiv);
+
+        var tasksDiv = document.createElement('div');
+        tasksDiv.className = 'template-card-tasks';
+        tasksDiv.textContent = taskCount + ' task' + (taskCount !== 1 ? 's' : '');
+        card.appendChild(tasksDiv);
+
+        card.addEventListener('click', function () {
+          currentTemplateId = t.id;
+          renderTemplates();
+        });
+
+        cardsDiv.appendChild(card);
       });
-      html += '</tbody></table>';
-      container.innerHTML = html;
+
+      container.appendChild(cardsDiv);
     }).catch(function (err) {
       container.innerHTML = '';
       showError('Failed to load templates: ' + err.message);
+    });
+  }
+
+  function renderTemplateEditor(templateId) {
+    var backBtn = document.createElement('button');
+    backBtn.className = 'btn-back';
+    backBtn.textContent = '\u2190 Back to Templates';
+    backBtn.addEventListener('click', function () {
+      currentTemplateId = null;
+      renderTemplates();
+    });
+    app.appendChild(backBtn);
+
+    var editorContainer = document.createElement('div');
+    editorContainer.id = 'template-editor-container';
+    editorContainer.innerHTML = '<p>Loading...</p>';
+    app.appendChild(editorContainer);
+
+    // Load template and users in parallel
+    Promise.all([
+      api.templates.get(templateId),
+      api.users.list()
+    ]).then(function (results) {
+      var template = results[0].template;
+      var users = (results[1] && results[1].users) || [];
+      buildTemplateEditorForm(template, users, editorContainer);
+    }).catch(function (err) {
+      editorContainer.innerHTML = '';
+      showError('Failed to load template: ' + err.message);
+    });
+  }
+
+  function buildTemplateEditorForm(template, users, container) {
+    container.innerHTML = '';
+
+    var editor = document.createElement('div');
+    editor.className = 'template-editor';
+
+    // ---- Basic Info Section ----
+    var basicH3 = document.createElement('h3');
+    basicH3.textContent = 'Basic Info';
+    editor.appendChild(basicH3);
+
+    var basicRow = document.createElement('div');
+    basicRow.className = 'editor-row';
+    basicRow.innerHTML =
+      '<div class="editor-group">' +
+        '<label for="tpl-name">Name</label>' +
+        '<input type="text" id="tpl-name" value="' + escapeHtml(template.name || '') + '" style="width:200px;" />' +
+      '</div>' +
+      '<div class="editor-group">' +
+        '<label for="tpl-type">Type</label>' +
+        '<input type="text" id="tpl-type" value="' + escapeHtml(template.type || '') + '" style="width:150px;" />' +
+      '</div>' +
+      '<div class="editor-group">' +
+        '<label for="tpl-emoji">Emoji</label>' +
+        '<input type="text" id="tpl-emoji" value="' + escapeHtml(template.emoji || '') + '" style="width:60px;" />' +
+      '</div>' +
+      '<div class="editor-group">' +
+        '<label for="tpl-tags">Tags (comma-separated)</label>' +
+        '<input type="text" id="tpl-tags" value="' + escapeHtml((template.tags || []).join(', ')) + '" style="width:200px;" />' +
+      '</div>' +
+      '<div class="editor-group">' +
+        '<label for="tpl-assignee">Default Assignee</label>' +
+        '<select id="tpl-assignee"></select>' +
+      '</div>';
+    editor.appendChild(basicRow);
+
+    // Populate assignee dropdown after DOM insertion
+    setTimeout(function () {
+      var assigneeSelect = document.getElementById('tpl-assignee');
+      if (assigneeSelect) {
+        assigneeSelect.innerHTML = '<option value="">(none)</option>';
+        users.forEach(function (u) {
+          var opt = document.createElement('option');
+          opt.value = u.id;
+          opt.textContent = u.name;
+          if (template.defaultAssigneeId === u.id) opt.selected = true;
+          assigneeSelect.appendChild(opt);
+        });
+      }
+    }, 0);
+
+    // ---- Trigger Config Section ----
+    var triggerH3 = document.createElement('h3');
+    triggerH3.textContent = 'Trigger Config';
+    editor.appendChild(triggerH3);
+
+    var triggerDiv = document.createElement('div');
+    var isAutomatic = template.triggerType === 'automatic';
+    triggerDiv.innerHTML =
+      '<div class="radio-group">' +
+        '<label><input type="radio" name="tpl-trigger" value="manual"' + (!isAutomatic ? ' checked' : '') + ' /> Manual</label>' +
+        '<label><input type="radio" name="tpl-trigger" value="automatic"' + (isAutomatic ? ' checked' : '') + ' /> Automatic</label>' +
+      '</div>' +
+      '<div class="trigger-fields" id="trigger-auto-fields" style="display:' + (isAutomatic ? 'block' : 'none') + ';">' +
+        '<div class="editor-row">' +
+          '<div class="editor-group">' +
+            '<label for="tpl-cron">Cron Expression</label>' +
+            '<input type="text" id="tpl-cron" value="' + escapeHtml(template.triggerSchedule || '') + '" style="width:200px;" placeholder="0 9 * * 1" />' +
+          '</div>' +
+          '<div class="editor-group">' +
+            '<label for="tpl-lead-days">Lead Days</label>' +
+            '<input type="number" id="tpl-lead-days" value="' + (template.triggerLeadDays != null ? template.triggerLeadDays : '') + '" style="width:100px;" />' +
+          '</div>' +
+        '</div>' +
+        '<div style="font-size:12px;color:#888;margin-top:4px;">Example: 0 9 * * 1 = Every Monday at 9am</div>' +
+      '</div>';
+    editor.appendChild(triggerDiv);
+
+    // Toggle trigger fields visibility
+    setTimeout(function () {
+      var radios = document.querySelectorAll('input[name="tpl-trigger"]');
+      radios.forEach(function (r) {
+        r.addEventListener('change', function () {
+          var autoFields = document.getElementById('trigger-auto-fields');
+          if (autoFields) {
+            autoFields.style.display = r.value === 'automatic' ? 'block' : 'none';
+          }
+        });
+      });
+    }, 0);
+
+    // ---- References Section ----
+    var refsH3 = document.createElement('h3');
+    refsH3.textContent = 'References';
+    editor.appendChild(refsH3);
+
+    var refsContainer = document.createElement('div');
+    refsContainer.id = 'tpl-references-list';
+    editor.appendChild(refsContainer);
+
+    var addRefBtn = document.createElement('button');
+    addRefBtn.className = 'btn-add';
+    addRefBtn.textContent = '+ Add Reference';
+    addRefBtn.addEventListener('click', function () {
+      addReferenceRow(refsContainer, '', '');
+    });
+    editor.appendChild(addRefBtn);
+
+    // ---- Bundle Link Definitions Section ----
+    var bldH3 = document.createElement('h3');
+    bldH3.textContent = 'Bundle Link Definitions';
+    editor.appendChild(bldH3);
+
+    var bldContainer = document.createElement('div');
+    bldContainer.id = 'tpl-bundlelinks-list';
+    editor.appendChild(bldContainer);
+
+    var addBldBtn = document.createElement('button');
+    addBldBtn.className = 'btn-add';
+    addBldBtn.textContent = '+ Add Bundle Link';
+    addBldBtn.addEventListener('click', function () {
+      addBundleLinkRow(bldContainer, '');
+    });
+    editor.appendChild(addBldBtn);
+
+    // ---- Task Definitions Section ----
+    var tdH3 = document.createElement('h3');
+    tdH3.textContent = 'Task Definitions';
+    editor.appendChild(tdH3);
+
+    var tdContainer = document.createElement('div');
+    tdContainer.id = 'tpl-taskdefs-list';
+    editor.appendChild(tdContainer);
+
+    var addTdBtn = document.createElement('button');
+    addTdBtn.className = 'btn-add';
+    addTdBtn.id = 'add-task-def-btn';
+    addTdBtn.textContent = '+ Add Task';
+    addTdBtn.addEventListener('click', function () {
+      var count = tdContainer.querySelectorAll('.task-def-item').length;
+      addTaskDefItem(tdContainer, {
+        refId: 'task-' + (count + 1),
+        description: '',
+        offsetDays: 0
+      }, users);
+    });
+    editor.appendChild(addTdBtn);
+
+    // ---- Save Bar ----
+    var saveBar = document.createElement('div');
+    saveBar.className = 'save-bar';
+    saveBar.innerHTML =
+      '<button class="btn-primary" id="tpl-save-btn">Save</button>' +
+      '<span class="save-feedback" id="tpl-save-feedback"></span>';
+    editor.appendChild(saveBar);
+
+    container.appendChild(editor);
+
+    // Populate references
+    var refs = template.references || [];
+    refs.forEach(function (ref) {
+      addReferenceRow(refsContainer, ref.name, ref.url);
+    });
+
+    // Populate bundle link definitions
+    var blds = template.bundleLinkDefinitions || [];
+    blds.forEach(function (bld) {
+      addBundleLinkRow(bldContainer, bld.name);
+    });
+
+    // Populate task definitions
+    var tds = template.taskDefinitions || [];
+    tds.forEach(function (td) {
+      addTaskDefItem(tdContainer, td, users);
+    });
+
+    // Setup drag-and-drop for task definitions
+    setupTaskDefDragDrop(tdContainer);
+
+    // Save handler
+    document.getElementById('tpl-save-btn').addEventListener('click', function () {
+      saveTemplate(template.id);
+    });
+  }
+
+  function addReferenceRow(container, name, url) {
+    var row = document.createElement('div');
+    row.className = 'list-item-row ref-row';
+    row.innerHTML =
+      '<input type="text" class="ref-name" placeholder="Name" value="' + escapeHtml(name) + '" style="width:150px;" />' +
+      '<input type="url" class="ref-url" placeholder="https://..." value="' + escapeHtml(url) + '" style="width:300px;" />';
+
+    var removeBtn = document.createElement('button');
+    removeBtn.className = 'btn-remove';
+    removeBtn.textContent = 'Remove';
+    removeBtn.addEventListener('click', function () {
+      row.remove();
+    });
+    row.appendChild(removeBtn);
+    container.appendChild(row);
+  }
+
+  function addBundleLinkRow(container, name) {
+    var row = document.createElement('div');
+    row.className = 'list-item-row bld-row';
+    row.innerHTML =
+      '<input type="text" class="bld-name" placeholder="Link name" value="' + escapeHtml(name) + '" style="width:200px;" />';
+
+    var removeBtn = document.createElement('button');
+    removeBtn.className = 'btn-remove';
+    removeBtn.textContent = 'Remove';
+    removeBtn.addEventListener('click', function () {
+      row.remove();
+    });
+    row.appendChild(removeBtn);
+    container.appendChild(row);
+  }
+
+  function addTaskDefItem(container, td, users) {
+    var item = document.createElement('div');
+    item.className = 'task-def-item';
+    item.setAttribute('draggable', 'true');
+
+    var header = document.createElement('div');
+    header.className = 'task-def-header';
+
+    var dragHandle = document.createElement('span');
+    dragHandle.className = 'task-def-drag-handle';
+    dragHandle.textContent = '\u2630';
+    dragHandle.title = 'Drag to reorder';
+    header.appendChild(dragHandle);
+
+    var refIdSpan = document.createElement('span');
+    refIdSpan.style.cssText = 'font-size:12px;color:#999;';
+    refIdSpan.textContent = 'refId: ' + escapeHtml(td.refId || '');
+    refIdSpan.className = 'td-refid-display';
+    header.appendChild(refIdSpan);
+
+    var removeBtn = document.createElement('button');
+    removeBtn.className = 'btn-remove';
+    removeBtn.textContent = 'Remove';
+    removeBtn.addEventListener('click', function () {
+      item.remove();
+    });
+    header.appendChild(removeBtn);
+
+    item.appendChild(header);
+
+    // Hidden refId field
+    var refIdInput = document.createElement('input');
+    refIdInput.type = 'hidden';
+    refIdInput.className = 'td-refid';
+    refIdInput.value = td.refId || '';
+    item.appendChild(refIdInput);
+
+    // Fields row
+    var fieldsDiv = document.createElement('div');
+    fieldsDiv.className = 'task-def-fields';
+
+    // Description
+    fieldsDiv.innerHTML =
+      '<div class="editor-group">' +
+        '<label>Description</label>' +
+        '<input type="text" class="td-description" value="' + escapeHtml(td.description || '') + '" style="width:250px;" />' +
+      '</div>' +
+      '<div class="editor-group">' +
+        '<label>Offset Days</label>' +
+        '<input type="number" class="td-offset" value="' + (td.offsetDays != null ? td.offsetDays : 0) + '" style="width:80px;" />' +
+      '</div>';
+
+    // Assignee dropdown
+    var assigneeGroup = document.createElement('div');
+    assigneeGroup.className = 'editor-group';
+    assigneeGroup.innerHTML = '<label>Assignee</label>';
+    var assigneeSelect = document.createElement('select');
+    assigneeSelect.className = 'td-assignee';
+    assigneeSelect.innerHTML = '<option value="">(default)</option>';
+    users.forEach(function (u) {
+      var opt = document.createElement('option');
+      opt.value = u.id;
+      opt.textContent = u.name;
+      if (td.assigneeId === u.id) opt.selected = true;
+      assigneeSelect.appendChild(opt);
+    });
+    assigneeGroup.appendChild(assigneeSelect);
+    fieldsDiv.appendChild(assigneeGroup);
+
+    // Instructions URL
+    var instrGroup = document.createElement('div');
+    instrGroup.className = 'editor-group';
+    instrGroup.innerHTML =
+      '<label>Instructions URL</label>' +
+      '<input type="text" class="td-instructions" value="' + escapeHtml(td.instructionsUrl || '') + '" style="width:250px;" />';
+    fieldsDiv.appendChild(instrGroup);
+
+    // Required link name
+    var rlnGroup = document.createElement('div');
+    rlnGroup.className = 'editor-group';
+    rlnGroup.innerHTML =
+      '<label>Required Link Name</label>' +
+      '<input type="text" class="td-required-link" value="' + escapeHtml(td.requiredLinkName || '') + '" style="width:150px;" />';
+    fieldsDiv.appendChild(rlnGroup);
+
+    item.appendChild(fieldsDiv);
+
+    // Checkboxes row
+    var checkboxDiv = document.createElement('div');
+    checkboxDiv.style.cssText = 'display:flex;gap:16px;margin-top:8px;flex-wrap:wrap;align-items:center;';
+
+    // Is milestone
+    var milestoneLabel = document.createElement('label');
+    milestoneLabel.className = 'task-def-checkbox';
+    var milestoneCheck = document.createElement('input');
+    milestoneCheck.type = 'checkbox';
+    milestoneCheck.className = 'td-milestone';
+    if (td.isMilestone) milestoneCheck.checked = true;
+    milestoneLabel.appendChild(milestoneCheck);
+    milestoneLabel.appendChild(document.createTextNode(' Is Milestone'));
+    checkboxDiv.appendChild(milestoneLabel);
+
+    // Stage on complete (only visible if milestone)
+    var stageGroup = document.createElement('div');
+    stageGroup.className = 'editor-group td-stage-group';
+    stageGroup.style.display = td.isMilestone ? '' : 'none';
+    stageGroup.innerHTML = '<label>Stage on Complete</label>';
+    var stageSelect = document.createElement('select');
+    stageSelect.className = 'td-stage';
+    var stageOptions = ['', 'announced', 'after-event', 'done'];
+    stageOptions.forEach(function (s) {
+      var opt = document.createElement('option');
+      opt.value = s;
+      opt.textContent = s || '(none)';
+      if (td.stageOnComplete === s) opt.selected = true;
+      stageSelect.appendChild(opt);
+    });
+    stageGroup.appendChild(stageSelect);
+    checkboxDiv.appendChild(stageGroup);
+
+    // Toggle stage visibility on milestone change
+    milestoneCheck.addEventListener('change', function () {
+      stageGroup.style.display = milestoneCheck.checked ? '' : 'none';
+    });
+
+    // Requires file
+    var fileLabel = document.createElement('label');
+    fileLabel.className = 'task-def-checkbox';
+    var fileCheck = document.createElement('input');
+    fileCheck.type = 'checkbox';
+    fileCheck.className = 'td-requires-file';
+    if (td.requiresFile) fileCheck.checked = true;
+    fileLabel.appendChild(fileCheck);
+    fileLabel.appendChild(document.createTextNode(' Requires File'));
+    checkboxDiv.appendChild(fileLabel);
+
+    item.appendChild(checkboxDiv);
+    container.appendChild(item);
+  }
+
+  function setupTaskDefDragDrop(container) {
+    var dragSrc = null;
+
+    container.addEventListener('dragstart', function (e) {
+      var item = e.target.closest('.task-def-item');
+      if (!item) return;
+      dragSrc = item;
+      item.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', '');
+    });
+
+    container.addEventListener('dragover', function (e) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      var item = e.target.closest('.task-def-item');
+      if (!item || item === dragSrc) return;
+
+      // Remove drag-over from all items
+      container.querySelectorAll('.task-def-item').forEach(function (el) {
+        el.classList.remove('drag-over');
+      });
+      item.classList.add('drag-over');
+    });
+
+    container.addEventListener('drop', function (e) {
+      e.preventDefault();
+      var item = e.target.closest('.task-def-item');
+      if (!item || !dragSrc || item === dragSrc) return;
+
+      // Determine position
+      var items = Array.from(container.querySelectorAll('.task-def-item'));
+      var dragIdx = items.indexOf(dragSrc);
+      var dropIdx = items.indexOf(item);
+
+      if (dragIdx < dropIdx) {
+        container.insertBefore(dragSrc, item.nextSibling);
+      } else {
+        container.insertBefore(dragSrc, item);
+      }
+    });
+
+    container.addEventListener('dragend', function () {
+      container.querySelectorAll('.task-def-item').forEach(function (el) {
+        el.classList.remove('dragging');
+        el.classList.remove('drag-over');
+      });
+      dragSrc = null;
+    });
+  }
+
+  function saveTemplate(templateId) {
+    var feedback = document.getElementById('tpl-save-feedback');
+    feedback.textContent = 'Saving...';
+    feedback.className = 'save-feedback';
+
+    var name = document.getElementById('tpl-name').value.trim();
+    var type = document.getElementById('tpl-type').value.trim();
+    var emoji = document.getElementById('tpl-emoji').value.trim();
+    var tagsStr = document.getElementById('tpl-tags').value.trim();
+    var assigneeId = document.getElementById('tpl-assignee').value;
+
+    var tags = tagsStr ? tagsStr.split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s; }) : [];
+
+    // Trigger config
+    var triggerRadio = document.querySelector('input[name="tpl-trigger"]:checked');
+    var triggerType = triggerRadio ? triggerRadio.value : 'manual';
+    var triggerSchedule = document.getElementById('tpl-cron').value.trim();
+    var triggerLeadDaysStr = document.getElementById('tpl-lead-days').value.trim();
+    var triggerLeadDays = triggerLeadDaysStr ? parseInt(triggerLeadDaysStr, 10) : undefined;
+
+    // References
+    var references = [];
+    document.querySelectorAll('#tpl-references-list .ref-row').forEach(function (row) {
+      var refName = row.querySelector('.ref-name').value.trim();
+      var refUrl = row.querySelector('.ref-url').value.trim();
+      if (refName || refUrl) {
+        references.push({ name: refName, url: refUrl });
+      }
+    });
+
+    // Bundle link definitions
+    var bundleLinkDefinitions = [];
+    document.querySelectorAll('#tpl-bundlelinks-list .bld-row').forEach(function (row) {
+      var bldName = row.querySelector('.bld-name').value.trim();
+      if (bldName) {
+        bundleLinkDefinitions.push({ name: bldName });
+      }
+    });
+
+    // Task definitions
+    var taskDefinitions = [];
+    document.querySelectorAll('#tpl-taskdefs-list .task-def-item').forEach(function (item) {
+      var refId = item.querySelector('.td-refid').value.trim();
+      var description = item.querySelector('.td-description').value.trim();
+      var offsetDays = parseInt(item.querySelector('.td-offset').value, 10) || 0;
+      var isMilestone = item.querySelector('.td-milestone').checked;
+      var stageOnComplete = item.querySelector('.td-stage').value || undefined;
+      var tdAssigneeId = item.querySelector('.td-assignee').value || undefined;
+      var instructionsUrl = item.querySelector('.td-instructions').value.trim() || undefined;
+      var requiredLinkName = item.querySelector('.td-required-link').value.trim() || undefined;
+      var requiresFile = item.querySelector('.td-requires-file').checked;
+
+      var tdObj = {
+        refId: refId,
+        description: description,
+        offsetDays: offsetDays
+      };
+
+      if (isMilestone) tdObj.isMilestone = true;
+      if (stageOnComplete && isMilestone) tdObj.stageOnComplete = stageOnComplete;
+      if (tdAssigneeId) tdObj.assigneeId = tdAssigneeId;
+      if (instructionsUrl) tdObj.instructionsUrl = instructionsUrl;
+      if (requiredLinkName) tdObj.requiredLinkName = requiredLinkName;
+      if (requiresFile) tdObj.requiresFile = true;
+
+      taskDefinitions.push(tdObj);
+    });
+
+    var updateData = {
+      name: name,
+      type: type,
+      emoji: emoji || undefined,
+      tags: tags.length > 0 ? tags : undefined,
+      defaultAssigneeId: assigneeId || undefined,
+      triggerType: triggerType,
+      references: references.length > 0 ? references : undefined,
+      bundleLinkDefinitions: bundleLinkDefinitions.length > 0 ? bundleLinkDefinitions : undefined,
+      taskDefinitions: taskDefinitions
+    };
+
+    if (triggerType === 'automatic') {
+      if (triggerSchedule) updateData.triggerSchedule = triggerSchedule;
+      if (triggerLeadDays !== undefined && !isNaN(triggerLeadDays)) updateData.triggerLeadDays = triggerLeadDays;
+    }
+
+    api.templates.update(templateId, updateData).then(function () {
+      feedback.textContent = 'Saved successfully!';
+      feedback.className = 'save-feedback success';
+    }).catch(function (err) {
+      feedback.textContent = 'Save failed: ' + err.message;
+      feedback.className = 'save-feedback error';
     });
   }
 

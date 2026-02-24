@@ -105,6 +105,12 @@
       },
     },
 
+    users: {
+      list: function () {
+        return fetch('/api/users').then(handleResponse);
+      },
+    },
+
     recurring: {
       list: function () {
         return fetch('/api/recurring').then(handleResponse);
