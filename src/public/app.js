@@ -56,8 +56,46 @@
     rangeMode: false,
     date: '',
     startDate: '',
-    endDate: ''
+    endDate: '',
+    statusFilter: 'all',
+    assigneeFilter: '',
+    bundleFilter: ''
   };
+
+  // Cached users map: { id: { id, name, email } }
+  var usersCache = null;
+  // Cached bundles list for filter dropdown
+  var bundlesCache = null;
+
+  function loadUsersOnce() {
+    if (usersCache) {
+      return Promise.resolve(usersCache);
+    }
+    return api.users.list().then(function (data) {
+      var map = {};
+      (data.users || []).forEach(function (u) {
+        map[u.id] = u;
+      });
+      usersCache = map;
+      return map;
+    }).catch(function () {
+      usersCache = {};
+      return {};
+    });
+  }
+
+  function loadBundlesOnce() {
+    if (bundlesCache) {
+      return Promise.resolve(bundlesCache);
+    }
+    return api.bundles.list().then(function (data) {
+      bundlesCache = data.bundles || [];
+      return bundlesCache;
+    }).catch(function () {
+      bundlesCache = [];
+      return [];
+    });
+  }
 
   function renderTasks() {
     clearApp();
@@ -66,6 +104,9 @@
     taskState.date = today;
     taskState.startDate = today;
     taskState.endDate = today;
+    taskState.statusFilter = 'all';
+    taskState.assigneeFilter = '';
+    taskState.bundleFilter = '';
 
     // Date filter bar
     var header = document.createElement('div');
@@ -83,10 +124,51 @@
       '</span>';
     app.appendChild(header);
 
+    // Filter bar
+    var filterBar = document.createElement('div');
+    filterBar.className = 'filter-bar';
+    filterBar.innerHTML =
+      '<label for="filter-status">Status</label>' +
+      '<select id="filter-status">' +
+        '<option value="all">All</option>' +
+        '<option value="todo">Todo</option>' +
+        '<option value="done">Done</option>' +
+      '</select>' +
+      '<label for="filter-assignee">Assignee</label>' +
+      '<select id="filter-assignee"><option value="">All</option></select>' +
+      '<label for="filter-bundle">Bundle</label>' +
+      '<select id="filter-bundle"><option value="">All (by date)</option></select>';
+    app.appendChild(filterBar);
+
     var dateInput = document.getElementById('task-date');
     var rangeToggle = document.getElementById('range-toggle');
     var rangeEndContainer = document.getElementById('range-end-container');
     var dateEndInput = document.getElementById('task-date-end');
+    var statusFilter = document.getElementById('filter-status');
+    var assigneeFilter = document.getElementById('filter-assignee');
+    var bundleFilterEl = document.getElementById('filter-bundle');
+
+    // Populate assignee dropdown
+    loadUsersOnce().then(function (users) {
+      Object.keys(users).forEach(function (uid) {
+        var opt = document.createElement('option');
+        opt.value = uid;
+        opt.textContent = users[uid].name;
+        assigneeFilter.appendChild(opt);
+      });
+      // Also populate the create form assignee dropdown
+      populateCreateFormAssignee(users);
+    });
+
+    // Populate bundle dropdown
+    loadBundlesOnce().then(function (bundles) {
+      bundles.forEach(function (b) {
+        var opt = document.createElement('option');
+        opt.value = b.id;
+        opt.textContent = b.title || 'Untitled';
+        bundleFilterEl.appendChild(opt);
+      });
+    });
 
     // Today button
     document.getElementById('btn-today').addEventListener('click', function () {
@@ -127,7 +209,25 @@
       reloadTasks();
     });
 
-    // Create form
+    // Status filter
+    statusFilter.addEventListener('change', function () {
+      taskState.statusFilter = statusFilter.value;
+      reloadTasks();
+    });
+
+    // Assignee filter
+    assigneeFilter.addEventListener('change', function () {
+      taskState.assigneeFilter = assigneeFilter.value;
+      reloadTasks();
+    });
+
+    // Bundle filter
+    bundleFilterEl.addEventListener('change', function () {
+      taskState.bundleFilter = bundleFilterEl.value;
+      reloadTasks();
+    });
+
+    // Create form (no comment field, with assignee dropdown)
     var form = document.createElement('div');
     form.className = 'form-section';
     form.innerHTML =
@@ -142,8 +242,8 @@
           '<input type="date" id="task-date-input" value="' + today + '" />' +
         '</div>' +
         '<div class="form-group">' +
-          '<label for="task-comment">Comment</label>' +
-          '<input type="text" id="task-comment" placeholder="Optional" style="width:200px;" />' +
+          '<label for="task-assignee">Assignee</label>' +
+          '<select id="task-assignee"><option value="">None</option></select>' +
         '</div>' +
         '<div class="form-group">' +
           '<label>&nbsp;</label>' +
@@ -152,22 +252,33 @@
       '</div>';
     app.appendChild(form);
 
+    function populateCreateFormAssignee(users) {
+      var sel = document.getElementById('task-assignee');
+      if (!sel) return;
+      Object.keys(users).forEach(function (uid) {
+        var opt = document.createElement('option');
+        opt.value = uid;
+        opt.textContent = users[uid].name;
+        sel.appendChild(opt);
+      });
+    }
+
     document.getElementById('task-create-btn').addEventListener('click', function () {
       var btn = document.getElementById('task-create-btn');
       var desc = document.getElementById('task-desc').value.trim();
       var date = document.getElementById('task-date-input').value;
-      var comment = document.getElementById('task-comment').value.trim();
+      var assigneeId = document.getElementById('task-assignee').value;
       if (!desc || !date) {
         showError('Description and date are required.');
         return;
       }
       var data = { description: desc, date: date, source: 'manual' };
-      if (comment) data.comment = comment;
+      if (assigneeId) data.assigneeId = assigneeId;
 
       btn.disabled = true;
       api.tasks.create(data).then(function () {
         document.getElementById('task-desc').value = '';
-        document.getElementById('task-comment').value = '';
+        document.getElementById('task-assignee').value = '';
         reloadTasks();
       }).catch(function (err) {
         showError('Failed to create task: ' + err.message);
@@ -189,11 +300,16 @@
     }
 
     function reloadTasks() {
-      if (taskState.rangeMode) {
-        loadTasks({ startDate: taskState.startDate, endDate: taskState.endDate });
+      var params;
+      // If bundle filter is set, use bundleId query (ignore date)
+      if (taskState.bundleFilter) {
+        params = { bundleId: taskState.bundleFilter };
+      } else if (taskState.rangeMode) {
+        params = { startDate: taskState.startDate, endDate: taskState.endDate };
       } else {
-        loadTasks({ date: taskState.date });
+        params = { date: taskState.date };
       }
+      loadTasks(params);
     }
 
     reloadTasks();
@@ -208,14 +324,38 @@
     var banners = app.querySelectorAll('.error-banner');
     banners.forEach(function (b) { b.remove(); });
 
+    var isBundleQuery = !!params.bundleId;
     var isRange = params.startDate !== undefined;
 
-    api.tasks.list(params).then(function (data) {
+    // Load tasks and users in parallel
+    Promise.all([
+      api.tasks.list(params),
+      loadUsersOnce()
+    ]).then(function (results) {
+      var data = results[0];
+      var usersMap = results[1];
       var tasks = data.tasks || [];
+
+      // Apply client-side status filter
+      if (taskState.statusFilter && taskState.statusFilter !== 'all') {
+        tasks = tasks.filter(function (t) {
+          return t.status === taskState.statusFilter;
+        });
+      }
+
+      // Apply client-side assignee filter
+      if (taskState.assigneeFilter) {
+        tasks = tasks.filter(function (t) {
+          return t.assigneeId === taskState.assigneeFilter;
+        });
+      }
+
       if (tasks.length === 0) {
-        var msg = isRange
-          ? 'No tasks found for this date range.'
-          : 'No tasks found for this date.';
+        var msg = isBundleQuery
+          ? 'No tasks found for this bundle.'
+          : isRange
+            ? 'No tasks found for this date range.'
+            : 'No tasks found for this date.';
         container.innerHTML = '<div class="empty-state">' + msg + '</div>';
         return;
       }
@@ -249,7 +389,7 @@
           bundleMap[b.id] = b.title;
         });
 
-        renderTaskTable(tasks, bundleMap, container, params);
+        renderTaskTable(tasks, bundleMap, usersMap, container, params);
       });
     }).catch(function (err) {
       container.innerHTML = '';
@@ -257,26 +397,58 @@
     });
   }
 
-  function renderTaskTable(tasks, bundleMap, container, params) {
-      var html = '<table><thead><tr>' +
-        '<th>Date</th><th>Description</th><th>Status</th><th>Comment</th><th>Actions</th>' +
+  function renderTaskTable(tasks, bundleMap, usersMap, container, params) {
+      var html = '<table class="task-table-compact"><thead><tr>' +
+        '<th></th><th>Date</th><th>Description</th><th>Bundle</th><th>Info</th><th>Assignee</th><th>Required Link</th>' +
         '</tr></thead><tbody>';
       tasks.forEach(function (t) {
         var isDone = t.status === 'done';
         var rowClass = isDone ? ' class="task-done"' : '';
         var checked = isDone ? ' checked' : '';
+
+        // Checkbox disabled if requiredLinkName is set and link is empty
+        var checkboxDisabled = '';
+        if (t.requiredLinkName && !t.link) {
+          checkboxDisabled = ' disabled';
+        }
+
+        // Bundle badge
         var bundleBadge;
         if (t.bundleId && bundleMap[t.bundleId]) {
-          bundleBadge = '<a class="badge-bundle" data-nav-bundle="' + escapeHtml(t.bundleId) + '">' + escapeHtml(bundleMap[t.bundleId]) + '</a> ';
+          bundleBadge = '<a class="badge-bundle" data-nav-bundle="' + escapeHtml(t.bundleId) + '">' + escapeHtml(bundleMap[t.bundleId]) + '</a>';
         } else {
-          bundleBadge = '<span class="badge-adhoc">ad hoc</span> ';
+          bundleBadge = '<span class="badge-adhoc">ad hoc</span>';
         }
+
+        // Instructions link icon
+        var instructionsHtml = '';
+        if (t.instructionsUrl) {
+          instructionsHtml = '<a class="instructions-link" href="' + escapeHtml(t.instructionsUrl) + '" target="_blank" rel="noopener" title="Instructions">\u{1F4CB}</a>';
+        }
+
+        // Assignee name
+        var assigneeHtml = '';
+        if (t.assigneeId && usersMap[t.assigneeId]) {
+          assigneeHtml = '<span class="badge-assignee">' + escapeHtml(usersMap[t.assigneeId].name) + '</span>';
+        }
+
+        // Required link input
+        var requiredLinkHtml = '';
+        if (t.requiredLinkName) {
+          requiredLinkHtml = '<span class="required-link-wrapper">' +
+            '<span class="required-link-label">' + escapeHtml(t.requiredLinkName) + ':</span>' +
+            '<input type="text" class="required-link-input" data-task-id="' + t.id + '" value="' + escapeHtml(t.link || '') + '" placeholder="URL" />' +
+            '</span>';
+        }
+
         html += '<tr' + rowClass + ' data-task-row="' + t.id + '">' +
+          '<td class="task-status"><input type="checkbox" class="task-status-checkbox" data-task-id="' + t.id + '" data-status="' + (t.status || 'todo') + '"' + checked + checkboxDisabled + ' /></td>' +
           '<td>' + escapeHtml(t.date) + '</td>' +
-          '<td class="task-description editable" data-field="description" data-task-id="' + t.id + '">' + bundleBadge + renderMarkdownLinks(t.description) + '</td>' +
-          '<td class="task-status"><input type="checkbox" class="task-status-checkbox" data-task-id="' + t.id + '" data-status="' + (t.status || 'todo') + '"' + checked + ' /></td>' +
-          '<td class="task-comment editable" data-field="comment" data-task-id="' + t.id + '">' + renderMarkdownLinks(t.comment || '') + '</td>' +
-          '<td><button class="btn-danger" data-delete-task="' + t.id + '" data-task-desc="' + escapeHtml(t.description) + '">Delete</button></td>' +
+          '<td class="task-description editable" data-field="description" data-task-id="' + t.id + '">' + renderMarkdownLinks(t.description) + '</td>' +
+          '<td>' + bundleBadge + '</td>' +
+          '<td>' + instructionsHtml + '</td>' +
+          '<td>' + assigneeHtml + '</td>' +
+          '<td>' + requiredLinkHtml + '</td>' +
           '</tr>';
       });
       html += '</tbody></table>';
@@ -306,7 +478,37 @@
         });
       });
 
-      // Inline editing for description and comment
+      // Required link input: save on Enter or blur
+      container.querySelectorAll('.required-link-input').forEach(function (inp) {
+        var saving = false;
+        function saveLink() {
+          if (saving) return;
+          saving = true;
+          var taskId = inp.getAttribute('data-task-id');
+          var linkValue = inp.value.trim();
+          api.tasks.update(taskId, { link: linkValue }).then(function () {
+            loadTasks(params);
+          }).catch(function (err) {
+            showError('Failed to save link: ' + err.message);
+            saving = false;
+          });
+        }
+        inp.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            saveLink();
+          }
+        });
+        inp.addEventListener('blur', function () {
+          saveLink();
+        });
+        // Prevent click from triggering row editable behavior
+        inp.addEventListener('click', function (e) {
+          e.stopPropagation();
+        });
+      });
+
+      // Inline editing for description
       container.querySelectorAll('td.editable').forEach(function (cell) {
         cell.addEventListener('click', function () {
           // Prevent opening a second editor
@@ -373,22 +575,6 @@
             if (!saving) {
               save();
             }
-          });
-        });
-      });
-
-      // Delete with confirmation
-      container.querySelectorAll('[data-delete-task]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          var id = btn.getAttribute('data-delete-task');
-          var desc = btn.getAttribute('data-task-desc');
-          if (!confirm('Delete task: "' + desc + '"?')) {
-            return;
-          }
-          api.tasks.delete(id).then(function () {
-            loadTasks(params);
-          }).catch(function (err) {
-            showError('Failed to delete task: ' + err.message);
           });
         });
       });

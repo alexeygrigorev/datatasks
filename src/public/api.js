@@ -105,6 +105,15 @@
       },
     },
 
+    users: {
+      list: function () {
+        return fetch('/api/users').then(handleResponse);
+      },
+      get: function (id) {
+        return fetch('/api/users/' + id).then(handleResponse);
+      },
+    },
+
     recurring: {
       list: function () {
         return fetch('/api/recurring').then(handleResponse);
