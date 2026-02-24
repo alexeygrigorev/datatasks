@@ -67,6 +67,15 @@ export interface RecurringConfig {
   updatedAt: string;
 }
 
+// --- User ---
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  createdAt: string;
+}
+
 // --- Lambda ---
 
 export interface LambdaEvent {

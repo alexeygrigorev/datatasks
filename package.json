@@ -14,6 +14,7 @@
     "build": "tsc && cp -r src/public dist/public && cp -r src/pages dist/pages",
     "start": "IS_LOCAL=true tsx scripts/dev-server.ts",
     "seed": "IS_LOCAL=true tsx scripts/seed-templates.ts",
+    "seed:users": "IS_LOCAL=true tsx scripts/seed-users.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tests.json && tsc --noEmit -p tsconfig.scripts.json",
     "clean": "rm -rf dist"
   },

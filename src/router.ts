@@ -5,6 +5,7 @@ import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { handleBundleRoutes } from './routes/bundles';
 import { handleTemplateRoutes } from './routes/templates';
 import { handleRecurringRoutes } from './routes/recurring';
+import { handleUserRoutes } from './routes/users';
 import { handleTelegramWebhook } from './routes/telegram';
 import { handleEmailWebhook } from './routes/email';
 import {
@@ -251,6 +252,13 @@ async function route(event: LambdaEvent, client: DynamoDBDocumentClient): Promis
 
     if (reqPath.startsWith('/api/recurring')) {
       const result = await handleRecurringRoutes(reqPath, method, event.body || null);
+      if (result) return result;
+    }
+
+    // ── User routes ──────────────────────────────────────────────
+
+    if (reqPath.startsWith('/api/users')) {
+      const result = await handleUserRoutes(reqPath, method, event.body || null);
       if (result) return result;
     }
 
