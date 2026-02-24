@@ -10,6 +10,7 @@ export interface Task {
   instructionsUrl?: string;
   link?: string;
   requiredLinkName?: string;
+  requiresFile?: boolean;
   assigneeId?: string;
   tags?: string[];
   bundleId?: string;
@@ -18,6 +19,18 @@ export interface Task {
   recurringConfigId?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+// --- File ---
+
+export interface FileRecord {
+  id: string;
+  taskId: string;
+  filename: string;
+  category: 'image' | 'invoice' | 'document';
+  tags?: string[];
+  storagePath: string;
+  createdAt: string;
 }
 
 // --- Bundle ---

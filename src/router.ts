@@ -6,6 +6,7 @@ import { handleBundleRoutes } from './routes/bundles';
 import { handleTemplateRoutes } from './routes/templates';
 import { handleRecurringRoutes } from './routes/recurring';
 import { handleUserRoutes } from './routes/users';
+import { handleFileRoutes } from './routes/files';
 import { handleTelegramWebhook } from './routes/telegram';
 import { handleEmailWebhook } from './routes/email';
 import {
@@ -19,6 +20,7 @@ import {
   listTasksByStatus,
 } from './db/tasks';
 import { updateBundle } from './db/bundles';
+import { listFilesByTask } from './db/files';
 import type { LambdaEvent, LambdaResponse, Task } from './types';
 
 const JSON_HEADERS: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -49,7 +51,7 @@ function extractTaskId(reqPath: string): string | null {
   return null;
 }
 
-const ALLOWED_UPDATE_FIELDS = ['description', 'date', 'comment', 'status', 'bundleId', 'source', 'instructionsUrl', 'link', 'requiredLinkName', 'assigneeId', 'tags'];
+const ALLOWED_UPDATE_FIELDS = ['description', 'date', 'comment', 'status', 'bundleId', 'source', 'instructionsUrl', 'link', 'requiredLinkName', 'requiresFile', 'assigneeId', 'tags'];
 
 async function route(event: LambdaEvent, client: DynamoDBDocumentClient): Promise<LambdaResponse> {
   const method = event.httpMethod || 'GET';
@@ -128,6 +130,7 @@ async function route(event: LambdaEvent, client: DynamoDBDocumentClient): Promis
       if (body.instructionsUrl !== undefined) taskData.instructionsUrl = body.instructionsUrl;
       if (body.link !== undefined) taskData.link = body.link;
       if (body.requiredLinkName !== undefined) taskData.requiredLinkName = body.requiredLinkName;
+      if (body.requiresFile !== undefined) taskData.requiresFile = body.requiresFile;
       if (body.assigneeId !== undefined) taskData.assigneeId = body.assigneeId;
       if (body.tags !== undefined) taskData.tags = body.tags;
       taskData.source = (body.source as string) || 'manual';
@@ -229,6 +232,15 @@ async function route(event: LambdaEvent, client: DynamoDBDocumentClient): Promis
         if (effectiveRequiredLinkName && !effectiveLink) {
           return jsonResponse(400, { error: `Cannot mark task as done: required link '${effectiveRequiredLinkName}' is not filled` });
         }
+
+        // requiresFile validation: cannot mark done if requiresFile is true and no files uploaded
+        const effectiveRequiresFile = (updates.requiresFile !== undefined ? updates.requiresFile : (existing as Record<string, unknown>).requiresFile) as boolean | undefined;
+        if (effectiveRequiresFile) {
+          const files = await listFilesByTask(client, id);
+          if (files.length === 0) {
+            return jsonResponse(400, { error: 'Cannot mark task as done: required file has not been uploaded' });
+          }
+        }
       }
 
       const updated = await updateTask(client, id, updates);
@@ -257,6 +269,13 @@ async function route(event: LambdaEvent, client: DynamoDBDocumentClient): Promis
         headers: JSON_HEADERS,
         body: '',
       };
+    }
+
+    // ── File routes ───────────────────────────────────────────────
+
+    if (reqPath.startsWith('/api/files')) {
+      const result = await handleFileRoutes(event);
+      if (result) return result;
     }
 
     // ── Bundle routes ──────────────────────────────────────────────
