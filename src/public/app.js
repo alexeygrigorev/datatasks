@@ -26,6 +26,7 @@
   // ── Router ──────────────────────────────────────────────────────
 
   var routes = {
+    '#/': renderDashboard,
     '#/tasks': renderTasks,
     '#/bundles': renderBundles,
     '#/templates': renderTemplates,
@@ -36,8 +37,14 @@
     var hash = location.hash || '';
     var handler = routes[hash];
     if (!handler) {
-      location.hash = '#/tasks';
+      location.hash = '#/';
       return;
+    }
+    // Toggle wide layout for dashboard
+    if (hash === '#/') {
+      app.classList.add('dashboard-wide');
+    } else {
+      app.classList.remove('dashboard-wide');
     }
     // Update active nav link
     var links = document.querySelectorAll('nav a:not(.brand)');
@@ -49,6 +56,459 @@
 
   window.addEventListener('hashchange', navigate);
   window.addEventListener('DOMContentLoaded', navigate);
+
+  // ── Dashboard View ─────────────────────────────────────────────
+
+  var GRACE_ID = '00000000-0000-0000-0000-000000000001';
+  var dashboardState = {
+    assignedToMe: true,
+    currentUserId: GRACE_ID,
+  };
+
+  function renderDashboard() {
+    clearApp();
+
+    // Notification bar
+    var notificationBar = document.createElement('div');
+    notificationBar.className = 'notification-bar';
+    notificationBar.id = 'notification-bar';
+    app.appendChild(notificationBar);
+
+    // Load notifications (graceful on 404)
+    loadNotifications();
+
+    // Two-column layout
+    var layout = document.createElement('div');
+    layout.className = 'dashboard-layout';
+
+    var leftCol = document.createElement('div');
+    leftCol.className = 'dashboard-left';
+
+    var rightCol = document.createElement('div');
+    rightCol.className = 'dashboard-right';
+
+    // Left column header
+    var leftHeader = document.createElement('h3');
+    leftHeader.textContent = 'Active Bundles';
+    leftHeader.style.cssText = 'margin-bottom:12px;font-size:16px;font-weight:600;';
+    leftCol.appendChild(leftHeader);
+
+    var bundlesContainer = document.createElement('div');
+    bundlesContainer.id = 'dashboard-bundles';
+    bundlesContainer.innerHTML = '<p>Loading...</p>';
+    leftCol.appendChild(bundlesContainer);
+
+    // Right column header with assigned-to-me toggle and user picker
+    var rightHeader = document.createElement('div');
+    rightHeader.className = 'dashboard-header';
+    rightHeader.innerHTML =
+      '<h3>Today\'s Tasks</h3>' +
+      '<select id="dashboard-user-picker" class="user-picker"></select>' +
+      '<label class="assigned-toggle">' +
+        '<input type="checkbox" id="assigned-to-me" ' + (dashboardState.assignedToMe ? 'checked' : '') + ' />' +
+        'Assigned to me' +
+      '</label>';
+    rightCol.appendChild(rightHeader);
+
+    var tasksContainer = document.createElement('div');
+    tasksContainer.id = 'dashboard-tasks';
+    tasksContainer.innerHTML = '<p>Loading...</p>';
+    rightCol.appendChild(tasksContainer);
+
+    layout.appendChild(leftCol);
+    layout.appendChild(rightCol);
+    app.appendChild(layout);
+
+    // Populate user picker
+    loadUsersOnce().then(function (usersMap) {
+      var picker = document.getElementById('dashboard-user-picker');
+      if (!picker) return;
+      Object.keys(usersMap).forEach(function (uid) {
+        var opt = document.createElement('option');
+        opt.value = uid;
+        opt.textContent = usersMap[uid].name;
+        if (uid === dashboardState.currentUserId) opt.selected = true;
+        picker.appendChild(opt);
+      });
+
+      picker.addEventListener('change', function () {
+        dashboardState.currentUserId = picker.value;
+        loadDashboardTasks();
+      });
+    });
+
+    // Toggle assigned-to-me
+    var toggleEl = document.getElementById('assigned-to-me');
+    if (toggleEl) {
+      toggleEl.addEventListener('change', function () {
+        dashboardState.assignedToMe = toggleEl.checked;
+        loadDashboardTasks();
+      });
+    }
+
+    // Load data
+    loadDashboardBundles();
+    loadDashboardTasks();
+  }
+
+  function loadNotifications() {
+    var bar = document.getElementById('notification-bar');
+    if (!bar) return;
+
+    api.notifications.list().then(function (data) {
+      var notifications = data.notifications || [];
+      if (notifications.length === 0) {
+        bar.innerHTML = '';
+        return;
+      }
+      bar.innerHTML = '';
+      notifications.forEach(function (n) {
+        var item = document.createElement('div');
+        item.className = 'notification-item';
+        item.setAttribute('data-notification-id', n.id);
+        var msgSpan = document.createElement('span');
+        msgSpan.textContent = n.message;
+        item.appendChild(msgSpan);
+        var dismissBtn = document.createElement('button');
+        dismissBtn.textContent = 'Dismiss';
+        dismissBtn.addEventListener('click', function () {
+          api.notifications.dismiss(n.id).then(function () {
+            item.remove();
+          }).catch(function () {
+            // silently ignore
+          });
+        });
+        item.appendChild(dismissBtn);
+        bar.appendChild(item);
+      });
+    }).catch(function () {
+      // Gracefully hide if API not available (404)
+      bar.innerHTML = '';
+    });
+  }
+
+  function loadDashboardBundles() {
+    var container = document.getElementById('dashboard-bundles');
+    if (!container) return;
+
+    Promise.all([
+      api.bundles.list(),
+      api.templates.list()
+    ]).then(function (results) {
+      var allBundles = results[0].bundles || [];
+      var templates = results[1].templates || [];
+
+      // Filter to active bundles
+      var bundles = allBundles.filter(function (b) {
+        return b.status === 'active';
+      });
+
+      if (bundles.length === 0) {
+        container.innerHTML = '<div class="empty-state">No active bundles</div>';
+        return;
+      }
+
+      // Build template map
+      var templateMap = {};
+      templates.forEach(function (t) {
+        templateMap[t.id] = t;
+      });
+
+      // Group by templateId
+      var groups = {};
+      bundles.forEach(function (b) {
+        var key = b.templateId || '__other__';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(b);
+      });
+
+      // Sort within each group by anchorDate ascending
+      Object.keys(groups).forEach(function (key) {
+        groups[key].sort(function (a, b) {
+          return (a.anchorDate || '').localeCompare(b.anchorDate || '');
+        });
+      });
+
+      // Fetch tasks for progress calculation
+      var taskPromises = bundles.map(function (b) {
+        return api.bundles.tasks(b.id).then(function (taskData) {
+          return { bundleId: b.id, tasks: taskData.tasks || [] };
+        }).catch(function () {
+          return { bundleId: b.id, tasks: [] };
+        });
+      });
+
+      Promise.all(taskPromises).then(function (taskResults) {
+        var taskMap = {};
+        taskResults.forEach(function (r) {
+          taskMap[r.bundleId] = r.tasks;
+        });
+
+        container.innerHTML = '';
+
+        // Render groups
+        var groupKeys = Object.keys(groups);
+        // Sort: named templates first, then "other"
+        groupKeys.sort(function (a, b) {
+          if (a === '__other__') return 1;
+          if (b === '__other__') return -1;
+          var nameA = templateMap[a] ? templateMap[a].name : a;
+          var nameB = templateMap[b] ? templateMap[b].name : b;
+          return nameA.localeCompare(nameB);
+        });
+
+        groupKeys.forEach(function (key) {
+          var heading = document.createElement('div');
+          heading.className = 'bundle-group-heading';
+          if (key === '__other__') {
+            heading.textContent = 'Other';
+          } else {
+            var tpl = templateMap[key];
+            heading.textContent = tpl ? (tpl.emoji ? tpl.emoji + ' ' : '') + tpl.name : 'Unknown Template';
+          }
+          container.appendChild(heading);
+
+          groups[key].forEach(function (b) {
+            var tasks = taskMap[b.id] || [];
+            var doneCount = tasks.filter(function (t) { return t.status === 'done'; }).length;
+            var totalCount = tasks.length;
+
+            var card = document.createElement('div');
+            card.className = 'dashboard-bundle-card';
+            card.setAttribute('data-bundle-id', b.id);
+
+            // Title line with emoji
+            var titleDiv = document.createElement('div');
+            titleDiv.className = 'dashboard-bundle-card-title';
+            titleDiv.textContent = (b.emoji ? b.emoji + ' ' : '') + (b.title || 'Untitled');
+            card.appendChild(titleDiv);
+
+            // Meta row: tags, anchor date, progress, stage
+            var metaDiv = document.createElement('div');
+            metaDiv.className = 'dashboard-bundle-card-meta';
+
+            // Tags
+            (b.tags || []).forEach(function (tag) {
+              var tagBadge = document.createElement('span');
+              tagBadge.className = 'badge-tag';
+              tagBadge.textContent = tag;
+              metaDiv.appendChild(tagBadge);
+            });
+
+            // Anchor date
+            if (b.anchorDate) {
+              var dateBadge = document.createElement('span');
+              dateBadge.className = 'badge-anchor-date';
+              dateBadge.textContent = b.anchorDate;
+              metaDiv.appendChild(dateBadge);
+            }
+
+            // Progress
+            var progressBadge = document.createElement('span');
+            var allDone = totalCount > 0 && doneCount === totalCount;
+            progressBadge.className = 'progress-badge' + (allDone ? ' all-done' : '');
+            progressBadge.textContent = doneCount + '/' + totalCount + ' done';
+            metaDiv.appendChild(progressBadge);
+
+            // Stage
+            var stage = b.stage || 'preparation';
+            var stageBadge = document.createElement('span');
+            stageBadge.className = 'badge-stage ' + stage;
+            stageBadge.textContent = stage;
+            metaDiv.appendChild(stageBadge);
+
+            card.appendChild(metaDiv);
+
+            // Click handler
+            card.addEventListener('click', function () {
+              currentBundleId = b.id;
+              location.hash = '#/bundles';
+            });
+
+            container.appendChild(card);
+          });
+        });
+      });
+    }).catch(function (err) {
+      container.innerHTML = '';
+      showError('Failed to load bundles: ' + err.message);
+    });
+  }
+
+  function loadDashboardTasks() {
+    var container = document.getElementById('dashboard-tasks');
+    if (!container) return;
+    container.innerHTML = '<p>Loading...</p>';
+
+    var today = todayString();
+
+    Promise.all([
+      api.tasks.list({ date: today }),
+      loadUsersOnce()
+    ]).then(function (results) {
+      var data = results[0];
+      var usersMap = results[1];
+      var tasks = data.tasks || [];
+
+      // Apply assigned-to-me filter
+      if (dashboardState.assignedToMe && dashboardState.currentUserId) {
+        tasks = tasks.filter(function (t) {
+          return t.assigneeId === dashboardState.currentUserId;
+        });
+      }
+
+      if (tasks.length === 0) {
+        container.innerHTML = '<div class="empty-state">No tasks for today</div>';
+        return;
+      }
+
+      // Sort by date ascending
+      tasks.sort(function (a, b) {
+        if (a.date < b.date) return -1;
+        if (a.date > b.date) return 1;
+        return 0;
+      });
+
+      // Collect unique bundleIds
+      var bundleIds = [];
+      tasks.forEach(function (t) {
+        if (t.bundleId && bundleIds.indexOf(t.bundleId) === -1) {
+          bundleIds.push(t.bundleId);
+        }
+      });
+
+      var bundlePromises = bundleIds.map(function (bid) {
+        return api.bundles.get(bid).then(function (d) {
+          return { id: bid, title: d.bundle.title || 'Untitled' };
+        }).catch(function () {
+          return { id: bid, title: 'Unknown' };
+        });
+      });
+
+      Promise.all(bundlePromises).then(function (bundleResults) {
+        var bundleMap = {};
+        bundleResults.forEach(function (b) {
+          bundleMap[b.id] = b.title;
+        });
+
+        renderDashboardTaskTable(tasks, bundleMap, usersMap, container);
+      });
+    }).catch(function (err) {
+      container.innerHTML = '';
+      showError('Failed to load tasks: ' + err.message);
+    });
+  }
+
+  function renderDashboardTaskTable(tasks, bundleMap, usersMap, container) {
+    var html = '<table class="task-table-compact"><thead><tr>' +
+      '<th></th><th>Date</th><th>Description</th><th>Bundle</th><th>Info</th><th>Assignee</th><th>Required Link</th>' +
+      '</tr></thead><tbody>';
+    tasks.forEach(function (t) {
+      var isDone = t.status === 'done';
+      var rowClass = isDone ? ' class="task-done"' : '';
+      var checked = isDone ? ' checked' : '';
+
+      // Checkbox disabled if requiredLinkName is set and link is empty
+      var checkboxDisabled = '';
+      if (t.requiredLinkName && !t.link) {
+        checkboxDisabled = ' disabled title="Fill in ' + escapeHtml(t.requiredLinkName) + ' link first"';
+      }
+
+      // Bundle badge
+      var bundleBadge;
+      if (t.bundleId && bundleMap[t.bundleId]) {
+        bundleBadge = '<a class="badge-bundle" data-nav-bundle="' + escapeHtml(t.bundleId) + '">' + escapeHtml(bundleMap[t.bundleId]) + '</a>';
+      } else {
+        bundleBadge = '<span class="badge-adhoc">ad hoc</span>';
+      }
+
+      // Instructions link icon
+      var instructionsHtml = '';
+      if (t.instructionsUrl) {
+        instructionsHtml = '<a class="instructions-link" href="' + escapeHtml(t.instructionsUrl) + '" target="_blank" rel="noopener" title="Instructions">\u{1F4CB}</a>';
+      }
+
+      // Assignee name
+      var assigneeHtml = '';
+      if (t.assigneeId && usersMap[t.assigneeId]) {
+        assigneeHtml = '<span class="badge-assignee">' + escapeHtml(usersMap[t.assigneeId].name) + '</span>';
+      }
+
+      // Required link input
+      var requiredLinkHtml = '';
+      if (t.requiredLinkName) {
+        requiredLinkHtml = '<span class="required-link-wrapper">' +
+          '<span class="required-link-label">' + escapeHtml(t.requiredLinkName) + ':</span>' +
+          '<input type="text" class="required-link-input" data-task-id="' + t.id + '" value="' + escapeHtml(t.link || '') + '" placeholder="URL" />' +
+          '</span>';
+      }
+
+      html += '<tr' + rowClass + ' data-task-row="' + t.id + '">' +
+        '<td class="task-status"><input type="checkbox" class="task-status-checkbox" data-task-id="' + t.id + '" data-status="' + (t.status || 'todo') + '"' + checked + checkboxDisabled + ' /></td>' +
+        '<td>' + escapeHtml(t.date) + '</td>' +
+        '<td class="task-description">' + renderMarkdownLinks(t.description) + '</td>' +
+        '<td>' + bundleBadge + '</td>' +
+        '<td>' + instructionsHtml + '</td>' +
+        '<td>' + assigneeHtml + '</td>' +
+        '<td>' + requiredLinkHtml + '</td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+
+    // Bundle navigation links
+    container.querySelectorAll('[data-nav-bundle]').forEach(function (el) {
+      el.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        currentBundleId = el.getAttribute('data-nav-bundle');
+        location.hash = '#/bundles';
+      });
+    });
+
+    // Status toggle via checkboxes
+    container.querySelectorAll('.task-status-checkbox').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        var id = cb.getAttribute('data-task-id');
+        var current = cb.getAttribute('data-status');
+        var next = current === 'done' ? 'todo' : 'done';
+        api.tasks.update(id, { status: next }).then(function () {
+          loadDashboardTasks();
+        }).catch(function (err) {
+          showError('Failed to update task: ' + err.message);
+        });
+      });
+    });
+
+    // Required link input: save on Enter or blur
+    container.querySelectorAll('.required-link-input').forEach(function (inp) {
+      var saving = false;
+      function saveLink() {
+        if (saving) return;
+        saving = true;
+        var taskId = inp.getAttribute('data-task-id');
+        var linkValue = inp.value.trim();
+        api.tasks.update(taskId, { link: linkValue }).then(function () {
+          loadDashboardTasks();
+        }).catch(function (err) {
+          showError('Failed to save link: ' + err.message);
+          saving = false;
+        });
+      }
+      inp.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          saveLink();
+        }
+      });
+      inp.addEventListener('blur', function () {
+        saveLink();
+      });
+      inp.addEventListener('click', function (e) {
+        e.stopPropagation();
+      });
+    });
+  }
 
   // ── Tasks View ──────────────────────────────────────────────────
 

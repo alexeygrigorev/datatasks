@@ -146,5 +146,17 @@
         }).then(handleResponse);
       },
     },
+
+    notifications: {
+      list: function () {
+        return fetch('/api/notifications').then(handleResponse);
+      },
+      dismiss: function (id) {
+        return fetch('/api/notifications/' + id + '/dismiss', {
+          method: 'PUT',
+          headers: JSON_HEADERS,
+        }).then(handleResponse);
+      },
+    },
   };
 })();

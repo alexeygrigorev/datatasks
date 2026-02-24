@@ -863,11 +863,203 @@
     input[type="url"]:focus {
       border-color: #3498db;
     }
+
+    /* ── Dashboard layout ─────────────────────────────────── */
+
+    .dashboard-layout {
+      display: flex;
+      gap: 24px;
+      align-items: flex-start;
+    }
+
+    .dashboard-left {
+      flex: 0 0 38%;
+      min-width: 0;
+    }
+
+    .dashboard-right {
+      flex: 1;
+      min-width: 0;
+    }
+
+    @media (max-width: 900px) {
+      .dashboard-layout {
+        flex-direction: column;
+      }
+      .dashboard-left,
+      .dashboard-right {
+        flex: none;
+        width: 100%;
+      }
+    }
+
+    /* Dashboard: wider container */
+    #app.dashboard-wide {
+      max-width: 1200px;
+    }
+
+    /* ── Notification bar ─────────────────────────────────── */
+
+    .notification-bar {
+      margin-bottom: 16px;
+    }
+
+    .notification-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #e8f4fd;
+      border: 1px solid #b3d9f2;
+      border-radius: 4px;
+      padding: 8px 14px;
+      margin-bottom: 6px;
+      font-size: 13px;
+      color: #1a5276;
+    }
+
+    .notification-item button {
+      background: transparent;
+      border: 1px solid #b3d9f2;
+      border-radius: 3px;
+      color: #2471a3;
+      font-size: 12px;
+      padding: 2px 10px;
+      cursor: pointer;
+    }
+
+    .notification-item button:hover {
+      background: #d4edff;
+    }
+
+    /* ── Bundle group headings ────────────────────────────── */
+
+    .bundle-group-heading {
+      font-size: 14px;
+      font-weight: 600;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+      margin: 16px 0 8px 0;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .bundle-group-heading:first-child {
+      margin-top: 0;
+    }
+
+    /* ── Dashboard bundle cards ───────────────────────────── */
+
+    .dashboard-bundle-card {
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      transition: box-shadow 0.2s, border-color 0.2s;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .dashboard-bundle-card:hover {
+      box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+      border-color: #3498db;
+    }
+
+    .dashboard-bundle-card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #2c3e50;
+    }
+
+    .dashboard-bundle-card-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .badge-anchor-date {
+      display: inline-block;
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 8px;
+      background: #fef9e7;
+      color: #b7950b;
+      font-weight: 600;
+    }
+
+    .badge-stage {
+      display: inline-block;
+      font-size: 10px;
+      padding: 1px 8px;
+      border-radius: 8px;
+      font-weight: 600;
+    }
+
+    .badge-stage.preparation {
+      background: #d6eaf8;
+      color: #1a5276;
+    }
+
+    .badge-stage.announced {
+      background: #fef9e7;
+      color: #b7950b;
+    }
+
+    .badge-stage.after-event {
+      background: #fdebd0;
+      color: #ca6f1e;
+    }
+
+    .badge-stage.done {
+      background: #eafaf1;
+      color: #1e8449;
+    }
+
+    /* ── Dashboard header bar ─────────────────────────────── */
+
+    .dashboard-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .dashboard-header h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0;
+    }
+
+    .assigned-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: #555;
+      cursor: pointer;
+      margin-left: auto;
+    }
+
+    .assigned-toggle input[type="checkbox"] {
+      cursor: pointer;
+    }
+
+    .user-picker {
+      font-size: 13px;
+      padding: 4px 8px;
+    }
   </style>
 </head>
 <body>
   <nav>
     <a href="#/" class="brand">DataTasks</a>
+    <a href="#/">Home</a>
     <a href="#/tasks">Tasks</a>
     <a href="#/bundles">Bundles</a>
     <a href="#/templates">Templates</a>
