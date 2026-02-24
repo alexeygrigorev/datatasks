@@ -167,6 +167,44 @@ interface TrelloList {
   pos: number;
 }
 
+// ---------------------------------------------------------------------------
+// Assignee hint mapping
+// ---------------------------------------------------------------------------
+
+const ASSIGNEE_HINTS: Record<string, string> = {
+  'valeriia': 'valeriia',
+  'grace': 'grace',
+  'alexey': 'alexey',
+};
+
+/**
+ * Extract assignee hint from task description text.
+ * Patterns: "(assignee: Name)" or "-- Name" at end of text.
+ */
+function extractAssigneeHint(text: string): { description: string; assigneeId: string | null } {
+  // Pattern: (assignee: Name)
+  const assigneeMatch = text.match(/\s*\(assignee:\s*([^)]+)\)\s*/i);
+  if (assigneeMatch) {
+    const name = assigneeMatch[1].trim().toLowerCase();
+    const assigneeId = ASSIGNEE_HINTS[name] || null;
+    const cleaned = text.replace(assigneeMatch[0], ' ').replace(/\s+/g, ' ').trim();
+    return { description: cleaned, assigneeId };
+  }
+
+  // Pattern: -- Name at end
+  const dashMatch = text.match(/\s*--\s+([A-Za-z]+)\s*$/);
+  if (dashMatch) {
+    const name = dashMatch[1].trim().toLowerCase();
+    const assigneeId = ASSIGNEE_HINTS[name] || null;
+    if (assigneeId) {
+      const cleaned = text.replace(dashMatch[0], '').trim();
+      return { description: cleaned, assigneeId };
+    }
+  }
+
+  return { description: text, assigneeId: null };
+}
+
 function mapTemplateType(cardName: string, labels: { name: string }[]): string {
   const name = cardName.toLowerCase();
   if (name.includes('[newsletter]')) return 'newsletter';
@@ -187,6 +225,61 @@ function mapTemplateType(cardName: string, labels: { name: string }[]): string {
     return labels[0].name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
   }
   return 'other';
+}
+
+/**
+ * Determine trigger type from template type.
+ * Newsletter, Social Media Weekly, Tax Report -> "automatic"
+ * All others -> "manual"
+ */
+function mapTriggerType(templateType: string): string {
+  const autoTypes = ['newsletter', 'social-media', 'tax-report'];
+  return autoTypes.includes(templateType) ? 'automatic' : 'manual';
+}
+
+/**
+ * Extract leading emoji from a card name.
+ * Returns the emoji string or null if no emoji prefix found.
+ */
+function extractEmoji(name: string): string | null {
+  // Match leading emoji characters (including multi-codepoint emoji like flags, skin tones)
+  const match = name.match(/^([\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE00}-\u{FEFF}\u{200D}\u{20E3}\u{E0020}-\u{E007F}\u{FE0F}\u{1F3FB}-\u{1F3FF}]+)/u);
+  if (match) return match[1];
+  return null;
+}
+
+/**
+ * Extract tags from Trello card labels.
+ */
+function extractTags(labels: { name: string }[]): string[] {
+  if (!labels || labels.length === 0) return [];
+  return labels.map((l) => l.name).filter((n) => n.length > 0);
+}
+
+/**
+ * Map Trello list name to bundle stage.
+ */
+function mapStageFromList(listName: string): string {
+  const lower = listName.toLowerCase();
+  if (lower.includes('preparation')) return 'preparation';
+  if (lower.includes('announced')) return 'announced';
+  if (lower.includes('after event')) return 'after-event';
+  if (lower.includes('done')) return 'done';
+  return 'preparation';
+}
+
+/**
+ * Extract markdown links from card description as references.
+ */
+function extractReferences(desc: string | undefined): { name: string; url: string }[] {
+  if (!desc) return [];
+  const references: { name: string; url: string }[] = [];
+  const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g;
+  let match;
+  while ((match = linkRegex.exec(desc)) !== null) {
+    references.push({ name: match[1], url: match[2] });
+  }
+  return references;
 }
 
 function trelloTemplateToAppTemplate(card: TrelloCard, boardChecklists: TrelloChecklist[]) {
@@ -224,11 +317,22 @@ function trelloTemplateToAppTemplate(card: TrelloCard, boardChecklists: TrelloCh
     }
   }
 
-  return {
+  const templateType = mapTemplateType(card.name, card.labels);
+
+  const result: Record<string, unknown> = {
     name: cleanTemplateName(card.name),
-    type: mapTemplateType(card.name, card.labels),
+    type: templateType,
     taskDefinitions,
+    triggerType: mapTriggerType(templateType),
   };
+
+  const emoji = extractEmoji(card.name);
+  if (emoji) result.emoji = emoji;
+
+  const tags = extractTags(card.labels);
+  if (tags.length > 0) result.tags = tags;
+
+  return result;
 }
 
 function cleanTemplateName(name: string): string {
@@ -298,7 +402,7 @@ function extractDateFromCardName(name: string): string | null {
   return null;
 }
 
-function trelloCardToBundle(card: TrelloCard) {
+function trelloCardToBundle(card: TrelloCard, listName: string) {
   const fallbackDate = card.dateLastActivity
     ? card.dateLastActivity.split('T')[0]
     : new Date().toISOString().split('T')[0];
@@ -310,10 +414,25 @@ function trelloCardToBundle(card: TrelloCard) {
     title: card.name,
     anchorDate,
     description: card.desc || null,
+    status: card.closed ? 'archived' : 'active',
+    stage: mapStageFromList(listName),
   };
 
-  const links = extractBundleLinks(card);
-  if (links.length > 0) bundle.links = links;
+  // Extract emoji from card name
+  const emoji = extractEmoji(card.name);
+  if (emoji) bundle.emoji = emoji;
+
+  // Extract tags from labels
+  const tags = extractTags(card.labels);
+  if (tags.length > 0) bundle.tags = tags;
+
+  // Extract references from description
+  const references = extractReferences(card.desc);
+  if (references.length > 0) bundle.references = references;
+
+  // Extract bundle links from attachments (renamed from links)
+  const bundleLinks = extractBundleLinks(card);
+  if (bundleLinks.length > 0) bundle.bundleLinks = bundleLinks;
 
   return bundle;
 }
@@ -332,19 +451,27 @@ function trelloChecklistItemsToTasks(card: TrelloCard, boardChecklists: TrelloCh
     ? card.due.split('T')[0]
     : extractDateFromCardName(card.name) || fallbackDate;
 
+  let itemIndex = 0;
   for (const cl of cardChecklists) {
     const items = (cl.checkItems || []).sort((a, b) => a.pos - b.pos);
     for (const item of items) {
       const { description: cleanedName, instructionsUrl } = extractInstructionsUrl(item.name);
+      const { description: finalName, assigneeId } = extractAssigneeHint(cleanedName);
+
+      const refId = slugify(`${cl.name}-${finalName}`.substring(0, 60));
+
       const taskData: Record<string, unknown> = {
-        description: `[${cl.name}] ${cleanedName}`,
+        description: `[${cl.name}] ${finalName}`,
         date: item.due ? item.due.split('T')[0] : anchorDate,
         status: item.state === 'complete' ? 'done' : 'todo',
-        source: 'manual',
+        source: 'template',
+        templateTaskRef: `${refId}-${itemIndex}`,
       };
-      if (instructionsUrl) taskData.comment = instructionsUrl;
+      if (instructionsUrl) taskData.instructionsUrl = instructionsUrl;
+      if (assigneeId) taskData.assigneeId = assigneeId;
       if (bundleId) taskData.bundleId = bundleId;
       tasks.push(taskData);
+      itemIndex++;
     }
   }
 
@@ -520,26 +647,28 @@ async function main() {
 
       const template = trelloTemplateToAppTemplate(card, allChecklists);
 
-      if (template.taskDefinitions.length === 0) {
+      if ((template.taskDefinitions as unknown[]).length === 0) {
         console.log(`  SKIP (no tasks): ${card.name}`);
         continue;
       }
 
-      if (existingNames.has(template.name)) {
+      if (existingNames.has(template.name as string)) {
         console.log(`  SKIP (exists): ${template.name}`);
         stats.skippedDuplicateTemplates++;
         continue;
       }
 
-      console.log(`  Template: ${template.name} (${template.type}) - ${template.taskDefinitions.length} task definitions`);
+      const emoji = template.emoji ? `${template.emoji} ` : '';
+      const tags = template.tags ? ` tags=${JSON.stringify(template.tags)}` : '';
+      console.log(`  Template: ${emoji}${template.name} (${template.type}) - ${(template.taskDefinitions as unknown[]).length} task definitions${tags} trigger=${template.triggerType}`);
 
       if (DRY_RUN) {
-        for (const td of template.taskDefinitions) {
+        for (const td of (template.taskDefinitions as { offsetDays: number; description: string; instructionsUrl?: string }[])) {
           console.log(`    [offset ${td.offsetDays >= 0 ? '+' : ''}${td.offsetDays}] ${td.description.substring(0, 80)}`);
         }
       } else {
         await createTemplate(client!, template as Record<string, unknown>);
-        existingNames.add(template.name);
+        existingNames.add(template.name as string);
       }
 
       stats.templates++;
@@ -554,10 +683,15 @@ async function main() {
     console.log('\n--- Importing Active Trello Cards as Bundles ---');
 
     for (const card of activeCards) {
-      const bundleData = trelloCardToBundle(card);
       const listName = listMap[card.idList]?.name || 'Unknown';
+      const bundleData = trelloCardToBundle(card, listName);
 
-      console.log(`  Bundle: ${(bundleData.title as string).substring(0, 70)} [${listName}]`);
+      const emoji = bundleData.emoji ? `${bundleData.emoji} ` : '';
+      const tags = bundleData.tags ? ` tags=${JSON.stringify(bundleData.tags)}` : '';
+      const stage = bundleData.stage ? ` stage=${bundleData.stage}` : '';
+      const bundleLinksCount = (bundleData.bundleLinks as unknown[])?.length || 0;
+      const refsCount = (bundleData.references as unknown[])?.length || 0;
+      console.log(`  Bundle: ${emoji}${(bundleData.title as string).substring(0, 70)} [${listName}]${stage}${tags} bundleLinks=${bundleLinksCount} refs=${refsCount}`);
 
       let bundleId: string | null = null;
 
@@ -572,7 +706,9 @@ async function main() {
       const tasks = trelloChecklistItemsToTasks(card, allChecklists, bundleId);
       for (const task of tasks) {
         if (DRY_RUN) {
-          console.log(`    [${task.status}] ${(task.description as string).substring(0, 70)}`);
+          const instrUrl = task.instructionsUrl ? ` [instructions: ${task.instructionsUrl}]` : '';
+          const assignee = task.assigneeId ? ` (assignee: ${task.assigneeId})` : '';
+          console.log(`    [${task.status}] ${(task.description as string).substring(0, 70)}${instrUrl}${assignee}`);
         } else {
           await createTask(client!, task);
         }
@@ -664,9 +800,44 @@ async function main() {
   }
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((err: unknown) => {
-    console.error('Migration failed:', err);
-    process.exit(1);
-  });
+// ---------------------------------------------------------------------------
+// Exports for testing
+// ---------------------------------------------------------------------------
+
+export {
+  extractEmoji,
+  extractTags,
+  mapStageFromList,
+  extractReferences,
+  extractBundleLinks,
+  extractInstructionsUrl,
+  extractAssigneeHint,
+  trelloCardToBundle,
+  trelloChecklistItemsToTasks,
+  trelloTemplateToAppTemplate,
+  mapTriggerType,
+  cleanTemplateName,
+  slugify,
+  mapTemplateType,
+  parseCSVFile,
+  parseDate,
+  extractDateFromCardName,
+  csvRowToTask,
+  isRecurringTask,
+  // Types
+  type TrelloCard,
+  type TrelloChecklist,
+  type TrelloCheckItem,
+  type TrelloList,
+};
+
+// Only run main() when executed directly (not when imported for testing)
+const isDirectExecution = process.argv[1]?.endsWith('migrate-data.ts') || process.argv[1]?.endsWith('migrate-data.js');
+if (isDirectExecution) {
+  main()
+    .then(() => process.exit(0))
+    .catch((err: unknown) => {
+      console.error('Migration failed:', err);
+      process.exit(1);
+    });
+}
