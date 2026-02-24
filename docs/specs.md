@@ -72,7 +72,9 @@ Templates (playbooks) define reusable task sets for repeating workflows (newslet
   - Description
   - Offset days (relative to anchor date)
   - Optional instructions URL (link to how-to document)
-- Template also defines which links a bundle needs (pre-defined link slots)
+- Templates have two kinds of links:
+  - References: fixed URLs that are the same for every bundle (process docs, server links, reference pages). Defined on the template, copied to every bundle.
+  - Bundle links: links that need to be filled during execution, unique per bundle (e.g., Luma event URL, YouTube link). Template defines the link names; bundles fill in the URLs.
 - Bundle creation triggers - two types:
   - Automatic: template has a schedule (cron expression) that auto-creates bundles. The schedule defines when to create the bundle relative to the anchor date. Examples: Newsletter (weekly, 14 days before publish), Social Media Weekly (weekly, Friday before), Tax Report (monthly, 1st of following month)
   - Manual: bundle is created by a person when a specific event happens (e.g., guest confirms a date, Alexey sends a recording). No schedule - user creates the bundle and sets the anchor date
@@ -88,7 +90,8 @@ A bundle is an instance of a template with a concrete anchor date. When created,
 - Inherit tags from templates
 - Task dates calculated relative to the anchor date
 - Links:
-  - Pre-defined link slots from the template
+  - References: inherited from template, pre-filled (process docs, server links)
+  - Bundle links: empty slots from template, filled during execution (e.g., Luma URL, YouTube link)
   - Users can add custom extra links beyond template-defined ones
 - Can mark tasks as done within the bundle view
 - No direct delete - flow: archive -> delete
@@ -120,6 +123,10 @@ All tasks:
 - Compact display: less whitespace, more info on screen - Trello-style
 - No delete action - only mark as done, archive, then delete if needed
 - Filtering by date, tag, bundle, template, user, etc.
+- Task completion requirements: some tasks require specific actions before they can be marked done:
+  - Required link: task requires filling in a URL (e.g., "Create event on Luma" requires the Luma link to be added to the bundle)
+  - Required file: task requires uploading a file
+  - These requirements are defined in the template task definition and enforced in the UI
 
 ### Recurring Configs
 
@@ -194,7 +201,8 @@ Fields:
 - type: string, required (e.g., "newsletter", "podcast", "webinar")
 - tags: array of strings, optional
 - defaultAssigneeId: string, optional (default user for tasks)
-- linkDefinitions: array of { name: string }, optional (link slots bundles should have)
+- references: array of { name: string, url: string }, optional (fixed links same for every bundle - process docs, server links)
+- bundleLinkDefinitions: array of { name: string }, optional (bundle link slots to be filled during execution)
 - taskDefinitions: array, required, each element:
   - refId: string, required (slug identifier)
   - description: string, required
@@ -202,6 +210,8 @@ Fields:
   - isMilestone: boolean, optional (if true, fixed to the anchor date)
   - assigneeId: string, optional (overrides template default)
   - instructionsUrl: string, optional (URL to instruction document)
+  - requiredLinkName: string, optional (name of the bundle link that must be filled before task can be completed, e.g., "Luma")
+  - requiresFile: boolean, optional (if true, task cannot be completed without uploading a file)
 - triggerType: "automatic" or "manual", defaults to "manual"
 - triggerSchedule: string, optional (cron expression for auto-creating bundles, only for automatic triggers)
 - triggerLeadDays: number, optional (how many days before anchor date to create the bundle, only for automatic triggers)
@@ -296,8 +306,11 @@ Each task definition: { refId, description, offsetDays, isMilestone?, assigneeId
 ### Home Dashboard
 
 The default landing page:
-- Shows all active bundles on the left 
-- Shows all tasks assigned to the current user on the right 
+- Shows all active bundles on the left
+- Shows all tasks assigned to the current user on the right
+- Notifications appear above the task list (e.g., "Newsletter bundle auto-created for Mar 15", "Tax Report bundle auto-created for February")
+  - Generated when automatic triggers create bundles
+  - Dismissible by the user
 - "Assigned to me" filter is on by default - can be toggled off to see everything
 - Tasks ordered by date, with filtering by bundle, template, tag, etc.
 
@@ -310,6 +323,9 @@ Compact Trello-style display. Each task shows:
 - Status checkbox
 - Comment (with markdown links)
 - Assignee
+- Completion requirements (if any):
+  - Required link: inline input field for the URL, pre-filled if the bundle link already has a value. The link name (e.g., "Luma") is shown as the field label. Task checkbox is disabled until the link is filled.
+  - Required file: upload button. Task checkbox is disabled until the file is uploaded.
 
 Filtering by: date/date range, tag, bundle, template, user.
 
@@ -325,6 +341,8 @@ Cards ordered/grouped by template type. Each card shows title, anchor date, desc
 - Description (with markdown links)
 - Links section: template-defined links + custom links. Inline form to add new links. Each link has a remove button.
 - Tasks table: all bundle tasks with description, date, status toggle, comment, and assignee
+  - Tasks with a required link show an inline input field linked to the corresponding bundle link. Filling it updates the bundle's links array. Checkbox disabled until filled.
+  - Tasks with a required file show an upload button. Checkbox disabled until file is uploaded.
 
 ### Templates View
 

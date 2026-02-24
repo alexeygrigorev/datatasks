@@ -130,9 +130,11 @@ Report:
 - Mark `[HUMAN]` only for things that truly can't be automated
 - Each criterion maps to one or more tests
 
-### Test Scenarios — BDD Style
+### Test Scenarios — BDD Style → Playwright E2E Tests
 
 Write scenarios as user stories, not element-existence checks. Every scenario must answer: WHO is the user, WHAT are they trying to do, and WHAT OUTCOME do they experience?
+
+**These scenarios will be implemented as Playwright E2E tests by the software engineer.** Write them with enough detail that each scenario maps directly to a Playwright test case.
 
 Rules:
 - Each scenario tells a STORY with a beginning, middle, and end
@@ -140,6 +142,8 @@ Rules:
 - Test what happens AFTER actions
 - Cover the full journey
 - Include the user's INTENT in the scenario name
+- API scenarios: will be tested via Playwright `request` fixture (actual HTTP calls)
+- Frontend scenarios: will be tested via Playwright `page` fixture (browser interactions)
 
 ---
 
@@ -171,10 +175,17 @@ Rules:
 - [ ] Does the new feature match the look and feel of existing pages?
 - [ ] Are similar actions handled the same way?
 
+#### E2E Test Coverage
+- [ ] Playwright E2E tests exist in `e2e/*.spec.js` for this issue
+- [ ] Every BDD test scenario from the issue has a corresponding Playwright test
+- [ ] E2E tests have been executed and pass (check engineer/tester reports)
+
 ### Verdict
 
-ACCEPT — The feature makes sense from a user perspective.
-REJECT — Specific user-facing issues to fix.
+ACCEPT — The feature makes sense from a user perspective AND has Playwright E2E test coverage.
+REJECT — Missing E2E tests, user-facing issues, or scenarios not covered by Playwright tests.
+
+**CRITICAL**: Always reject if Playwright E2E tests are missing or were not executed. This is a hard requirement.
 
 ## DX Review
 
@@ -188,7 +199,14 @@ REJECT — Specific user-facing issues to fix.
 - [ ] Are destructive operations behind explicit flags?
 - [ ] Is idempotency handled?
 
+#### E2E Test Coverage
+- [ ] Playwright E2E tests exist in `e2e/*.spec.js` for this issue
+- [ ] Every BDD test scenario from the issue has a corresponding Playwright test
+- [ ] E2E tests have been executed and pass
+
 ### Verdict
 
-ACCEPT — The tool is clear, safe, and developer-friendly.
-REJECT — Specific DX issues to fix.
+ACCEPT — The tool is clear, safe, developer-friendly, AND has Playwright E2E test coverage.
+REJECT — Missing E2E tests, DX issues, or scenarios not covered by Playwright tests.
+
+**CRITICAL**: Always reject if Playwright E2E tests are missing or were not executed.

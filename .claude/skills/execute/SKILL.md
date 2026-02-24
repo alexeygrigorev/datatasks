@@ -37,7 +37,7 @@ After picking issues, create a todo list with dependencies:
 Launch engineers in parallel for each picked issue:
 
 ```
-Task(subagent_type="implementer", model="opus", prompt="Implement issue #N. Read the issue with gh issue view N --repo alexeygrigorev/datatasks. Read docs/specs.md and docs/PROCESS.md first. Follow the spec and acceptance criteria. Write code and tests. Do NOT commit.")
+Task(subagent_type="implementer", model="opus", prompt="Implement issue #N. Read the issue with gh issue view N --repo alexeygrigorev/datatasks. Read docs/specs.md and docs/PROCESS.md first. Follow the spec and acceptance criteria. Write code, unit tests, AND Playwright E2E tests in e2e/*.spec.js. Run npx playwright test and verify all E2E tests pass. Do NOT commit.")
 ```
 
 ## Step 3: QA (parallel)
@@ -45,7 +45,7 @@ Task(subagent_type="implementer", model="opus", prompt="Implement issue #N. Read
 For each completed implementation, launch a tester agent:
 
 ```
-Task(subagent_type="qa", model="opus", prompt="QA issue #N. Read docs/specs.md and docs/PROCESS.md first. The engineer wrote {description}. Review the code, run ALL tests. Report pass/fail with specifics.")
+Task(subagent_type="qa", model="opus", prompt="QA issue #N. Read docs/specs.md and docs/PROCESS.md first. The engineer wrote {description}. Review the code, run ALL tests (npm test AND npx playwright test). Verify Playwright E2E tests exist in e2e/*.spec.js covering the issue's BDD scenarios. FAIL if E2E tests are missing. Report pass/fail with specifics.")
 ```
 
 ## Step 4: Handle QA Results
@@ -57,7 +57,7 @@ Task(subagent_type="qa", model="opus", prompt="QA issue #N. Read docs/specs.md a
 ## Step 5: PM Acceptance Review (features only)
 
 ```
-Task(subagent_type="general-purpose", model="opus", prompt="You are the Product Manager agent doing acceptance review for issue #N. Read docs/specs.md first. Read .claude/agents/product-manager.md for your review checklist. Report ACCEPT or REJECT with specifics.")
+Task(subagent_type="general-purpose", model="opus", prompt="You are the Product Manager agent doing acceptance review for issue #N. Read docs/specs.md first. Read .claude/agents/product-manager.md for your review checklist. CRITICAL: Reject if Playwright E2E tests are missing or don't cover the issue's BDD test scenarios. Check e2e/*.spec.js files. Report ACCEPT or REJECT with specifics.")
 ```
 
 ## Step 6: Handle PM Results

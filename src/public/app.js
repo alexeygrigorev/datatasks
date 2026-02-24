@@ -227,6 +227,37 @@
         return 0;
       });
 
+      // Collect unique projectIds and fetch project titles
+      var projectIds = [];
+      tasks.forEach(function (t) {
+        if (t.projectId && projectIds.indexOf(t.projectId) === -1) {
+          projectIds.push(t.projectId);
+        }
+      });
+
+      var projectPromises = projectIds.map(function (pid) {
+        return api.projects.get(pid).then(function (p) {
+          return { id: pid, title: p.title || 'Untitled' };
+        }).catch(function () {
+          return { id: pid, title: 'Unknown' };
+        });
+      });
+
+      Promise.all(projectPromises).then(function (projectResults) {
+        var projectMap = {};
+        projectResults.forEach(function (p) {
+          projectMap[p.id] = p.title;
+        });
+
+        renderTaskTable(tasks, projectMap, container, params);
+      });
+    }).catch(function (err) {
+      container.innerHTML = '';
+      showError('Failed to load tasks: ' + err.message);
+    });
+  }
+
+  function renderTaskTable(tasks, projectMap, container, params) {
       var html = '<table><thead><tr>' +
         '<th>Date</th><th>Description</th><th>Status</th><th>Comment</th><th>Actions</th>' +
         '</tr></thead><tbody>';
@@ -234,17 +265,32 @@
         var isDone = t.status === 'done';
         var rowClass = isDone ? ' class="task-done"' : '';
         var checked = isDone ? ' checked' : '';
-        var adHocBadge = !t.projectId ? '<span class="badge-adhoc">ad hoc</span> ' : '';
+        var projectBadge;
+        if (t.projectId && projectMap[t.projectId]) {
+          projectBadge = '<a class="badge-project" data-nav-project="' + escapeHtml(t.projectId) + '">' + escapeHtml(projectMap[t.projectId]) + '</a> ';
+        } else {
+          projectBadge = '<span class="badge-adhoc">ad hoc</span> ';
+        }
         html += '<tr' + rowClass + ' data-task-row="' + t.id + '">' +
           '<td>' + escapeHtml(t.date) + '</td>' +
-          '<td class="task-description editable" data-field="description" data-task-id="' + t.id + '">' + adHocBadge + escapeHtml(t.description) + '</td>' +
+          '<td class="task-description editable" data-field="description" data-task-id="' + t.id + '">' + projectBadge + renderMarkdownLinks(t.description) + '</td>' +
           '<td class="task-status"><input type="checkbox" class="task-status-checkbox" data-task-id="' + t.id + '" data-status="' + (t.status || 'todo') + '"' + checked + ' /></td>' +
-          '<td class="task-comment editable" data-field="comment" data-task-id="' + t.id + '">' + escapeHtml(t.comment || '') + '</td>' +
+          '<td class="task-comment editable" data-field="comment" data-task-id="' + t.id + '">' + renderMarkdownLinks(t.comment || '') + '</td>' +
           '<td><button class="btn-danger" data-delete-task="' + t.id + '" data-task-desc="' + escapeHtml(t.description) + '">Delete</button></td>' +
           '</tr>';
       });
       html += '</tbody></table>';
       container.innerHTML = html;
+
+      // Project navigation links
+      container.querySelectorAll('[data-nav-project]').forEach(function (el) {
+        el.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          currentProjectId = el.getAttribute('data-nav-project');
+          location.hash = '#/projects';
+        });
+      });
 
       // Status toggle via checkboxes
       container.querySelectorAll('.task-status-checkbox').forEach(function (cb) {
@@ -346,10 +392,6 @@
           });
         });
       });
-    }).catch(function (err) {
-      container.innerHTML = '';
-      showError('Failed to load tasks: ' + err.message);
-    });
   }
 
   // ── Projects View ───────────────────────────────────────────────
@@ -600,9 +642,73 @@
       if (project.description) {
         var descDiv = document.createElement('div');
         descDiv.className = 'project-detail-desc';
-        descDiv.textContent = project.description;
+        descDiv.innerHTML = renderMarkdownLinks(project.description);
         container.appendChild(descDiv);
       }
+
+      // Links section
+      var linksSection = document.createElement('div');
+      linksSection.className = 'project-links-section';
+      var linksHeader = document.createElement('h3');
+      linksHeader.textContent = 'Links';
+      linksHeader.style.marginBottom = '8px';
+      linksSection.appendChild(linksHeader);
+
+      var linksList = document.createElement('div');
+      linksList.className = 'project-links-list';
+      var projectLinks = project.links || [];
+      if (projectLinks.length === 0) {
+        linksList.innerHTML = '<div class="empty-state" style="padding:8px 0;">No links yet.</div>';
+      } else {
+        projectLinks.forEach(function (link, idx) {
+          var linkRow = document.createElement('div');
+          linkRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:4px;';
+          linkRow.innerHTML =
+            '<a href="' + escapeHtml(link.url) + '" target="_blank" rel="noopener">' + escapeHtml(link.name || link.url) + '</a>' +
+            '<button class="btn-danger" style="padding:2px 8px;font-size:12px;" data-remove-link="' + idx + '">x</button>';
+          linksList.appendChild(linkRow);
+        });
+      }
+      linksSection.appendChild(linksList);
+
+      // Add link form
+      var addLinkForm = document.createElement('div');
+      addLinkForm.style.cssText = 'display:flex;align-items:center;gap:8px;margin-top:8px;';
+      addLinkForm.innerHTML =
+        '<input type="text" id="link-name" placeholder="Link name" style="width:150px;" />' +
+        '<input type="url" id="link-url" placeholder="https://..." style="width:250px;" />' +
+        '<button class="btn-primary" id="add-link-btn" style="padding:6px 12px;">Add</button>';
+      linksSection.appendChild(addLinkForm);
+      container.appendChild(linksSection);
+
+      // Add link handler
+      document.getElementById('add-link-btn').addEventListener('click', function () {
+        var name = document.getElementById('link-name').value.trim();
+        var url = document.getElementById('link-url').value.trim();
+        if (!url) {
+          showError('URL is required.');
+          return;
+        }
+        var updatedLinks = (project.links || []).concat([{ name: name || url, url: url }]);
+        api.projects.update(projectId, { links: updatedLinks }).then(function () {
+          loadProjectDetail(projectId);
+        }).catch(function (err) {
+          showError('Failed to add link: ' + err.message);
+        });
+      });
+
+      // Remove link handlers
+      linksSection.querySelectorAll('[data-remove-link]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var idx = parseInt(btn.getAttribute('data-remove-link'), 10);
+          var updatedLinks = (project.links || []).filter(function (_, i) { return i !== idx; });
+          api.projects.update(projectId, { links: updatedLinks }).then(function () {
+            loadProjectDetail(projectId);
+          }).catch(function (err) {
+            showError('Failed to remove link: ' + err.message);
+          });
+        });
+      });
 
       // Tasks section
       var tasksHeader = document.createElement('h3');
@@ -638,11 +744,11 @@
       tasks.forEach(function (t) {
         var statusClass = t.status === 'done' ? 'status-done' : 'status-todo';
         html += '<tr>' +
-          '<td>' + escapeHtml(t.description) + '</td>' +
+          '<td>' + renderMarkdownLinks(t.description) + '</td>' +
           '<td>' + escapeHtml(t.date || '') + '</td>' +
           '<td class="' + statusClass + '" data-task-id="' + t.id + '" data-status="' + t.status + '">' +
             escapeHtml(t.status || 'todo') + '</td>' +
-          '<td>' + escapeHtml(t.comment || '') + '</td>' +
+          '<td>' + renderMarkdownLinks(t.comment || '') + '</td>' +
           '</tr>';
       });
       html += '</tbody></table>';
@@ -916,5 +1022,12 @@
               .replace(/</g, '&lt;')
               .replace(/>/g, '&gt;')
               .replace(/"/g, '&quot;');
+  }
+
+  function renderMarkdownLinks(str) {
+    if (!str) return '';
+    var escaped = escapeHtml(str);
+    return escaped.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener">$1</a>');
   }
 })();

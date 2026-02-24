@@ -36,7 +36,21 @@ git pull
 
 ### 3. Write Tests
 
-Every issue must include tests. Test what the acceptance criteria describe.
+Every issue must include **both** unit tests AND Playwright E2E tests.
+
+#### Unit Tests
+- Test individual functions and modules in `tests/*.test.js`
+- Run with `npm test`
+
+#### Playwright E2E Tests
+- Write E2E tests in `e2e/*.spec.js` that cover the BDD test scenarios from the issue
+- Each test scenario in the issue should map to a Playwright test
+- API issues: test the actual HTTP endpoints via `request` fixture
+- Frontend issues: test user interactions via `page` fixture (click, fill, navigate)
+- Run with `npx playwright test`
+- The dev server starts automatically (configured in `playwright.config.js`)
+
+**CRITICAL**: You must actually run `npx playwright test` and verify all E2E tests pass before reporting done. Do not skip this step. If tests fail, fix the code or tests until they pass.
 
 ### 4. Update Acceptance Criteria in the Issue
 
@@ -104,7 +118,8 @@ Commit message rules:
 
 - Do NOT commit or push until the tester has approved
 - Implement exactly what the issue asks for — no extra features
-- Every issue must include tests
+- Every issue must include both unit tests AND Playwright E2E tests
+- You must run `npx playwright test` and confirm E2E tests pass before reporting done
 - Follow existing patterns
 - Always `git pull` before starting work
 

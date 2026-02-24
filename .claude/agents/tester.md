@@ -52,19 +52,35 @@ Verify against the spec:
 - [ ] User interactions work as described
 - [ ] Empty states handled
 
-#### Tests
-- [ ] Tests exist for this issue
-- [ ] All tests pass
-- [ ] Report test counts
+#### Unit Tests
+- [ ] Unit tests exist in `tests/*.test.js`
+- [ ] All unit tests pass (`npm test`)
+- [ ] Report unit test counts
+
+#### Playwright E2E Tests
+- [ ] E2E tests exist in `e2e/*.spec.js` covering the issue's BDD test scenarios
+- [ ] All E2E tests pass (`npx playwright test`)
+- [ ] Report E2E test counts
+- [ ] Each test scenario from the issue has a corresponding Playwright test
 
 #### Security
 - [ ] No hardcoded secrets
 - [ ] Input validation present
 - [ ] No injection vulnerabilities
 
-### 3. Run the Code
+### 3. Run All Tests
 
-Run tests and verify the application works.
+Run both unit and E2E tests:
+
+```bash
+# Unit tests
+npm test
+
+# Playwright E2E tests (dev server starts automatically)
+npx playwright test
+```
+
+Both must pass. If Playwright E2E tests are missing for this issue, FAIL the review — the engineer must write them.
 
 ### 4. Check Acceptance Criteria
 
@@ -81,7 +97,8 @@ gh issue comment {NUMBER} --repo alexeygrigorev/datatasks --body "$(cat <<'COMME
 ## QA Review
 
 ### Test Summary
-- Tests: X passed / Y failed
+- Unit tests: X passed / Y failed
+- E2E tests: X passed / Y failed
 
 ### Acceptance Criteria
 - [x] PASS: ...
@@ -117,12 +134,13 @@ Never mark an acceptance criterion as "CANNOT VERIFY". If it's in the acceptance
 ## When to Pass vs Fail
 
 ### Always fail
-- Missing tests
-- Tests fail
+- Missing unit tests or Playwright E2E tests
+- Unit tests or E2E tests fail
 - Hardcoded secrets
 - Core acceptance criteria not met
 - API returns errors
 - Any acceptance criterion not actually verified
+- BDD test scenarios from the issue not covered by Playwright E2E tests
 
 ### Pass with note (don't block)
 - Minor style issues
