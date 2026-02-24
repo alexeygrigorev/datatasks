@@ -95,6 +95,13 @@ A bundle is an instance of a template with a concrete anchor date. When created,
   - Users can add custom extra links beyond template-defined ones
 - Can mark tasks as done within the bundle view
 - No direct delete - flow: archive -> delete
+- Bundles have stages that represent workflow progress:
+  - "preparation": initial stage when bundle is created, tasks being set up
+  - "announced": event has been announced publicly
+  - "after-event": the main event/milestone has passed, post-event tasks remain
+  - "done": all tasks completed
+- Completing certain milestone tasks triggers automatic stage transitions (e.g., the "Actual stream" milestone moves bundle from "announced" to "after-event")
+- Stage transitions can also be triggered manually
 
 ### Tasks
 
@@ -185,6 +192,7 @@ Fields:
 - description: string, optional (may contain markdown links)
 - templateId: string, optional
 - status: "active" or "archived" - defaults to "active"
+- stage: "preparation", "announced", "after-event", or "done" - defaults to "preparation"
 - emoji: string, optional (inherited from template)
 - references: array of { name: string, url: string }, optional (fixed links inherited from template - process docs, server links)
 - bundleLinks: array of { name: string, url: string }, optional (slots to fill during execution - e.g., Luma URL, YouTube link)
@@ -214,6 +222,7 @@ Fields:
   - description: string, required
   - offsetDays: number, required (relative to anchor date) -- comment. not required, automatically calculated based on milestones. but for milestones it's required. 
   - isMilestone: boolean, optional (if true, fixed to the anchor date)
+  - stageOnComplete: string, optional (stage to transition bundle to when this milestone task is completed, e.g., "announced", "after-event", "done")
   - assigneeId: string, optional (overrides template default)
   - instructionsUrl: string, optional (URL to instruction document)
   - requiredLinkName: string, optional (name of the bundle link that must be filled before task can be completed, e.g., "Luma")
@@ -275,7 +284,7 @@ All endpoints accept and return JSON. All endpoints are auth-gated - unauthentic
 - `GET /api/bundles` - list all bundles
 - `POST /api/bundles` - create a bundle (body: { title, anchorDate, description?, templateId?, emoji?, references?, bundleLinks?, tags? })
 - `GET /api/bundles/:id` - get a single bundle
-- `PUT /api/bundles/:id` - update a bundle (body: subset of { title, description, anchorDate, status, emoji, references, bundleLinks, tags })
+- `PUT /api/bundles/:id` - update a bundle (body: subset of { title, description, anchorDate, status, stage, emoji, references, bundleLinks, tags })
 - `PUT /api/bundles/:id/archive` - archive a bundle
 - `DELETE /api/bundles/:id` - permanently delete (only archived bundles)
 - `GET /api/bundles/:id/tasks` - list all tasks for a bundle
