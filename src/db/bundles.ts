@@ -7,28 +7,28 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 
-import { TABLE_PROJECTS } from './setup';
-import type { Project } from '../types';
+import { TABLE_BUNDLES } from './setup';
+import type { Bundle } from '../types';
 
 /**
  * Strip DynamoDB key attributes (PK, SK) from an item.
  */
-function cleanItem(item: Record<string, unknown> | undefined): Project | null {
+function cleanItem(item: Record<string, unknown> | undefined): Bundle | null {
   if (!item) return null;
   const { PK, SK, ...rest } = item;
-  return rest as unknown as Project;
+  return rest as unknown as Bundle;
 }
 
 /**
- * Create a new project. Generates a UUID, sets createdAt/updatedAt.
+ * Create a new bundle. Generates a UUID, sets createdAt/updatedAt.
  */
-async function createProject(client: DynamoDBDocumentClient, data: Record<string, unknown>): Promise<Project> {
+async function createBundle(client: DynamoDBDocumentClient, data: Record<string, unknown>): Promise<Bundle> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
 
   const item = {
-    PK: `PROJECT#${id}`,
-    SK: `PROJECT#${id}`,
+    PK: `BUNDLE#${id}`,
+    SK: `BUNDLE#${id}`,
     id,
     createdAt: now,
     updatedAt: now,
@@ -37,22 +37,22 @@ async function createProject(client: DynamoDBDocumentClient, data: Record<string
 
   await client.send(
     new PutCommand({
-      TableName: TABLE_PROJECTS,
+      TableName: TABLE_BUNDLES,
       Item: item,
     })
   );
 
-  return cleanItem(item) as Project;
+  return cleanItem(item) as Bundle;
 }
 
 /**
- * Get a project by id.
+ * Get a bundle by id.
  */
-async function getProject(client: DynamoDBDocumentClient, id: string): Promise<Project | null> {
+async function getBundle(client: DynamoDBDocumentClient, id: string): Promise<Bundle | null> {
   const result = await client.send(
     new GetCommand({
-      TableName: TABLE_PROJECTS,
-      Key: { PK: `PROJECT#${id}`, SK: `PROJECT#${id}` },
+      TableName: TABLE_BUNDLES,
+      Key: { PK: `BUNDLE#${id}`, SK: `BUNDLE#${id}` },
     })
   );
 
@@ -60,9 +60,9 @@ async function getProject(client: DynamoDBDocumentClient, id: string): Promise<P
 }
 
 /**
- * Partial update of a project.
+ * Partial update of a bundle.
  */
-async function updateProject(client: DynamoDBDocumentClient, id: string, updates: Record<string, unknown>): Promise<Project | null> {
+async function updateBundle(client: DynamoDBDocumentClient, id: string, updates: Record<string, unknown>): Promise<Bundle | null> {
   const now = new Date().toISOString();
   const fields: Record<string, unknown> = { ...updates, updatedAt: now };
 
@@ -82,8 +82,8 @@ async function updateProject(client: DynamoDBDocumentClient, id: string, updates
 
   const result = await client.send(
     new UpdateCommand({
-      TableName: TABLE_PROJECTS,
-      Key: { PK: `PROJECT#${id}`, SK: `PROJECT#${id}` },
+      TableName: TABLE_BUNDLES,
+      Key: { PK: `BUNDLE#${id}`, SK: `BUNDLE#${id}` },
       UpdateExpression: `SET ${expressionParts.join(', ')}`,
       ExpressionAttributeNames: expressionAttrNames,
       ExpressionAttributeValues: expressionAttrValues,
@@ -95,36 +95,36 @@ async function updateProject(client: DynamoDBDocumentClient, id: string, updates
 }
 
 /**
- * Delete a project by id.
+ * Delete a bundle by id.
  */
-async function deleteProject(client: DynamoDBDocumentClient, id: string): Promise<void> {
+async function deleteBundle(client: DynamoDBDocumentClient, id: string): Promise<void> {
   await client.send(
     new DeleteCommand({
-      TableName: TABLE_PROJECTS,
-      Key: { PK: `PROJECT#${id}`, SK: `PROJECT#${id}` },
+      TableName: TABLE_BUNDLES,
+      Key: { PK: `BUNDLE#${id}`, SK: `BUNDLE#${id}` },
     })
   );
 }
 
 /**
- * List all projects by scanning for items where PK begins with "PROJECT#".
+ * List all bundles by scanning for items where PK begins with "BUNDLE#".
  */
-async function listProjects(client: DynamoDBDocumentClient): Promise<Project[]> {
+async function listBundles(client: DynamoDBDocumentClient): Promise<Bundle[]> {
   const result = await client.send(
     new ScanCommand({
-      TableName: TABLE_PROJECTS,
+      TableName: TABLE_BUNDLES,
       FilterExpression: 'begins_with(PK, :prefix)',
-      ExpressionAttributeValues: { ':prefix': 'PROJECT#' },
+      ExpressionAttributeValues: { ':prefix': 'BUNDLE#' },
     })
   );
 
-  return (result.Items || []).map((item) => cleanItem(item as Record<string, unknown>) as Project);
+  return (result.Items || []).map((item) => cleanItem(item as Record<string, unknown>) as Bundle);
 }
 
 export {
-  createProject,
-  getProject,
-  updateProject,
-  deleteProject,
-  listProjects,
+  createBundle,
+  getBundle,
+  updateBundle,
+  deleteBundle,
+  listBundles,
 };

@@ -27,7 +27,7 @@
 
   var routes = {
     '#/tasks': renderTasks,
-    '#/projects': renderProjects,
+    '#/bundles': renderBundles,
     '#/templates': renderTemplates,
     '#/recurring': renderRecurring,
   };
@@ -227,29 +227,29 @@
         return 0;
       });
 
-      // Collect unique projectIds and fetch project titles
-      var projectIds = [];
+      // Collect unique bundleIds and fetch bundle titles
+      var bundleIds = [];
       tasks.forEach(function (t) {
-        if (t.projectId && projectIds.indexOf(t.projectId) === -1) {
-          projectIds.push(t.projectId);
+        if (t.bundleId && bundleIds.indexOf(t.bundleId) === -1) {
+          bundleIds.push(t.bundleId);
         }
       });
 
-      var projectPromises = projectIds.map(function (pid) {
-        return api.projects.get(pid).then(function (p) {
-          return { id: pid, title: p.title || 'Untitled' };
+      var bundlePromises = bundleIds.map(function (bid) {
+        return api.bundles.get(bid).then(function (data) {
+          return { id: bid, title: data.bundle.title || 'Untitled' };
         }).catch(function () {
-          return { id: pid, title: 'Unknown' };
+          return { id: bid, title: 'Unknown' };
         });
       });
 
-      Promise.all(projectPromises).then(function (projectResults) {
-        var projectMap = {};
-        projectResults.forEach(function (p) {
-          projectMap[p.id] = p.title;
+      Promise.all(bundlePromises).then(function (bundleResults) {
+        var bundleMap = {};
+        bundleResults.forEach(function (b) {
+          bundleMap[b.id] = b.title;
         });
 
-        renderTaskTable(tasks, projectMap, container, params);
+        renderTaskTable(tasks, bundleMap, container, params);
       });
     }).catch(function (err) {
       container.innerHTML = '';
@@ -257,7 +257,7 @@
     });
   }
 
-  function renderTaskTable(tasks, projectMap, container, params) {
+  function renderTaskTable(tasks, bundleMap, container, params) {
       var html = '<table><thead><tr>' +
         '<th>Date</th><th>Description</th><th>Status</th><th>Comment</th><th>Actions</th>' +
         '</tr></thead><tbody>';
@@ -265,15 +265,15 @@
         var isDone = t.status === 'done';
         var rowClass = isDone ? ' class="task-done"' : '';
         var checked = isDone ? ' checked' : '';
-        var projectBadge;
-        if (t.projectId && projectMap[t.projectId]) {
-          projectBadge = '<a class="badge-project" data-nav-project="' + escapeHtml(t.projectId) + '">' + escapeHtml(projectMap[t.projectId]) + '</a> ';
+        var bundleBadge;
+        if (t.bundleId && bundleMap[t.bundleId]) {
+          bundleBadge = '<a class="badge-bundle" data-nav-bundle="' + escapeHtml(t.bundleId) + '">' + escapeHtml(bundleMap[t.bundleId]) + '</a> ';
         } else {
-          projectBadge = '<span class="badge-adhoc">ad hoc</span> ';
+          bundleBadge = '<span class="badge-adhoc">ad hoc</span> ';
         }
         html += '<tr' + rowClass + ' data-task-row="' + t.id + '">' +
           '<td>' + escapeHtml(t.date) + '</td>' +
-          '<td class="task-description editable" data-field="description" data-task-id="' + t.id + '">' + projectBadge + renderMarkdownLinks(t.description) + '</td>' +
+          '<td class="task-description editable" data-field="description" data-task-id="' + t.id + '">' + bundleBadge + renderMarkdownLinks(t.description) + '</td>' +
           '<td class="task-status"><input type="checkbox" class="task-status-checkbox" data-task-id="' + t.id + '" data-status="' + (t.status || 'todo') + '"' + checked + ' /></td>' +
           '<td class="task-comment editable" data-field="comment" data-task-id="' + t.id + '">' + renderMarkdownLinks(t.comment || '') + '</td>' +
           '<td><button class="btn-danger" data-delete-task="' + t.id + '" data-task-desc="' + escapeHtml(t.description) + '">Delete</button></td>' +
@@ -282,13 +282,13 @@
       html += '</tbody></table>';
       container.innerHTML = html;
 
-      // Project navigation links
-      container.querySelectorAll('[data-nav-project]').forEach(function (el) {
+      // Bundle navigation links
+      container.querySelectorAll('[data-nav-bundle]').forEach(function (el) {
         el.addEventListener('click', function (e) {
           e.preventDefault();
           e.stopPropagation();
-          currentProjectId = el.getAttribute('data-nav-project');
-          location.hash = '#/projects';
+          currentBundleId = el.getAttribute('data-nav-bundle');
+          location.hash = '#/bundles';
         });
       });
 
@@ -394,47 +394,47 @@
       });
   }
 
-  // ── Projects View ───────────────────────────────────────────────
+  // ── Bundles View ───────────────────────────────────────────────
 
-  var currentProjectId = null;
+  var currentBundleId = null;
 
-  function renderProjects() {
+  function renderBundles() {
     clearApp();
 
-    if (currentProjectId) {
-      renderProjectDetail(currentProjectId);
+    if (currentBundleId) {
+      renderBundleDetail(currentBundleId);
       return;
     }
 
     var header = document.createElement('h2');
-    header.textContent = 'Projects';
+    header.textContent = 'Bundles';
     app.appendChild(header);
 
     // Create form
     var form = document.createElement('div');
     form.className = 'form-section';
     form.innerHTML =
-      '<h3>New Project</h3>' +
+      '<h3>New Bundle</h3>' +
       '<div class="form-row">' +
         '<div class="form-group">' +
-          '<label for="proj-title">Title</label>' +
-          '<input type="text" id="proj-title" placeholder="Project title" style="width:250px;" />' +
+          '<label for="bundle-title">Title</label>' +
+          '<input type="text" id="bundle-title" placeholder="Bundle title" style="width:250px;" />' +
         '</div>' +
         '<div class="form-group">' +
-          '<label for="proj-anchor">Anchor Date</label>' +
-          '<input type="date" id="proj-anchor" value="' + todayString() + '" />' +
+          '<label for="bundle-anchor">Anchor Date</label>' +
+          '<input type="date" id="bundle-anchor" value="' + todayString() + '" />' +
         '</div>' +
         '<div class="form-group">' +
-          '<label for="proj-desc">Description</label>' +
-          '<input type="text" id="proj-desc" placeholder="Optional" style="width:250px;" />' +
+          '<label for="bundle-desc">Description</label>' +
+          '<input type="text" id="bundle-desc" placeholder="Optional" style="width:250px;" />' +
         '</div>' +
         '<div class="form-group">' +
-          '<label for="proj-template">Template</label>' +
-          '<select id="proj-template"><option value="">No template</option></select>' +
+          '<label for="bundle-template">Template</label>' +
+          '<select id="bundle-template"><option value="">No template</option></select>' +
         '</div>' +
         '<div class="form-group">' +
           '<label>&nbsp;</label>' +
-          '<button class="btn-primary" id="proj-create-btn">Create</button>' +
+          '<button class="btn-primary" id="bundle-create-btn">Create</button>' +
         '</div>' +
       '</div>';
     app.appendChild(form);
@@ -442,11 +442,11 @@
     // Populate template dropdown
     loadTemplateDropdown();
 
-    document.getElementById('proj-create-btn').addEventListener('click', function () {
-      var title = document.getElementById('proj-title').value.trim();
-      var anchorDate = document.getElementById('proj-anchor').value;
-      var description = document.getElementById('proj-desc').value.trim();
-      var templateId = document.getElementById('proj-template').value;
+    document.getElementById('bundle-create-btn').addEventListener('click', function () {
+      var title = document.getElementById('bundle-title').value.trim();
+      var anchorDate = document.getElementById('bundle-anchor').value;
+      var description = document.getElementById('bundle-desc').value.trim();
+      var templateId = document.getElementById('bundle-template').value;
       if (!title || !anchorDate) {
         showError('Title and anchor date are required.');
         return;
@@ -454,25 +454,25 @@
       var data = { title: title, anchorDate: anchorDate };
       if (description) data.description = description;
       if (templateId) data.templateId = templateId;
-      api.projects.create(data).then(function () {
-        document.getElementById('proj-title').value = '';
-        document.getElementById('proj-desc').value = '';
-        document.getElementById('proj-template').value = '';
-        loadProjects();
+      api.bundles.create(data).then(function () {
+        document.getElementById('bundle-title').value = '';
+        document.getElementById('bundle-desc').value = '';
+        document.getElementById('bundle-template').value = '';
+        loadBundles();
       }).catch(function (err) {
-        showError('Failed to create project: ' + err.message);
+        showError('Failed to create bundle: ' + err.message);
       });
     });
 
     var cardsContainer = document.createElement('div');
-    cardsContainer.id = 'projects-table';
+    cardsContainer.id = 'bundles-table';
     app.appendChild(cardsContainer);
 
-    loadProjects();
+    loadBundles();
   }
 
   function loadTemplateDropdown() {
-    var select = document.getElementById('proj-template');
+    var select = document.getElementById('bundle-template');
     if (!select) return;
     api.templates.list().then(function (data) {
       var templates = data.templates || [];
@@ -488,125 +488,126 @@
     });
   }
 
-  function loadProjects() {
-    var container = document.getElementById('projects-table');
+  function loadBundles() {
+    var container = document.getElementById('bundles-table');
     if (!container) return;
     container.innerHTML = '<p>Loading...</p>';
 
     var banners = app.querySelectorAll('.error-banner');
     banners.forEach(function (b) { b.remove(); });
 
-    api.projects.list().then(function (data) {
-      var projects = data.projects || [];
-      if (projects.length === 0) {
-        container.innerHTML = '<div class="empty-state">No projects yet. Create one to get started.</div>';
+    api.bundles.list().then(function (data) {
+      var bundles = data.bundles || [];
+      if (bundles.length === 0) {
+        container.innerHTML = '<div class="empty-state">No bundles yet. Create one to get started.</div>';
         return;
       }
 
-      // Fetch tasks for each project to compute progress
-      var taskPromises = projects.map(function (p) {
-        return api.projects.tasks(p.id).then(function (taskData) {
-          return { projectId: p.id, tasks: taskData.tasks || [] };
+      // Fetch tasks for each bundle to compute progress
+      var taskPromises = bundles.map(function (b) {
+        return api.bundles.tasks(b.id).then(function (taskData) {
+          return { bundleId: b.id, tasks: taskData.tasks || [] };
         }).catch(function () {
-          return { projectId: p.id, tasks: [] };
+          return { bundleId: b.id, tasks: [] };
         });
       });
 
       Promise.all(taskPromises).then(function (taskResults) {
         var taskMap = {};
         taskResults.forEach(function (r) {
-          taskMap[r.projectId] = r.tasks;
+          taskMap[r.bundleId] = r.tasks;
         });
 
         container.innerHTML = '';
         var cardsDiv = document.createElement('div');
-        cardsDiv.className = 'project-cards';
+        cardsDiv.className = 'bundle-cards';
 
-        projects.forEach(function (p) {
-          var tasks = taskMap[p.id] || [];
+        bundles.forEach(function (b) {
+          var tasks = taskMap[b.id] || [];
           var doneCount = tasks.filter(function (t) { return t.status === 'done'; }).length;
           var totalCount = tasks.length;
           var badgeClass = 'progress-badge' + (totalCount > 0 && doneCount === totalCount ? ' all-done' : '');
 
-          var descText = p.description || '';
+          var descText = b.description || '';
           var truncatedDesc = descText.length > 100 ? descText.substring(0, 100) + '...' : descText;
 
           var card = document.createElement('div');
-          card.className = 'project-card';
+          card.className = 'bundle-card';
           card.innerHTML =
-            '<a class="project-card-title" data-project-id="' + p.id + '">' + escapeHtml(p.title) + '</a>' +
-            '<div class="project-card-date">' + escapeHtml(p.anchorDate || '') + '</div>' +
-            (truncatedDesc ? '<div class="project-card-desc">' + escapeHtml(truncatedDesc) + '</div>' : '') +
-            '<div class="project-card-footer">' +
+            '<a class="bundle-card-title" data-bundle-id="' + b.id + '">' + escapeHtml(b.title) + '</a>' +
+            '<div class="bundle-card-date">' + escapeHtml(b.anchorDate || '') + '</div>' +
+            (truncatedDesc ? '<div class="bundle-card-desc">' + escapeHtml(truncatedDesc) + '</div>' : '') +
+            '<div class="bundle-card-footer">' +
               '<span class="' + badgeClass + '">' + doneCount + ' / ' + totalCount + ' done</span>' +
-              '<button class="btn-danger" data-delete-project="' + p.id + '">Delete</button>' +
+              '<button class="btn-danger" data-delete-bundle="' + b.id + '">Delete</button>' +
             '</div>';
           cardsDiv.appendChild(card);
         });
 
         container.appendChild(cardsDiv);
 
-        // Click on project title → detail view
-        container.querySelectorAll('[data-project-id]').forEach(function (el) {
+        // Click on bundle title -> detail view
+        container.querySelectorAll('[data-bundle-id]').forEach(function (el) {
           el.addEventListener('click', function (e) {
             e.preventDefault();
-            currentProjectId = el.getAttribute('data-project-id');
-            renderProjects();
+            currentBundleId = el.getAttribute('data-bundle-id');
+            renderBundles();
           });
         });
 
-        // Delete project
-        container.querySelectorAll('[data-delete-project]').forEach(function (btn) {
+        // Delete bundle
+        container.querySelectorAll('[data-delete-bundle]').forEach(function (btn) {
           btn.addEventListener('click', function () {
-            var id = btn.getAttribute('data-delete-project');
-            api.projects.delete(id).then(function () {
-              loadProjects();
+            var id = btn.getAttribute('data-delete-bundle');
+            api.bundles.delete(id).then(function () {
+              loadBundles();
             }).catch(function (err) {
-              showError('Failed to delete project: ' + err.message);
+              showError('Failed to delete bundle: ' + err.message);
             });
           });
         });
       });
     }).catch(function (err) {
       container.innerHTML = '';
-      showError('Failed to load projects: ' + err.message);
+      showError('Failed to load bundles: ' + err.message);
     });
   }
 
-  function renderProjectDetail(projectId) {
+  function renderBundleDetail(bundleId) {
     var backBtn = document.createElement('button');
     backBtn.className = 'btn-back';
-    backBtn.textContent = '\u2190 Back to Projects';
+    backBtn.textContent = '\u2190 Back to Bundles';
     backBtn.addEventListener('click', function () {
-      currentProjectId = null;
-      renderProjects();
+      currentBundleId = null;
+      renderBundles();
     });
     app.appendChild(backBtn);
 
     var detailContainer = document.createElement('div');
-    detailContainer.id = 'project-detail';
+    detailContainer.id = 'bundle-detail';
     detailContainer.innerHTML = '<p>Loading...</p>';
     app.appendChild(detailContainer);
 
-    loadProjectDetail(projectId);
+    loadBundleDetail(bundleId);
   }
 
-  function loadProjectDetail(projectId) {
-    var container = document.getElementById('project-detail');
+  function loadBundleDetail(bundleId) {
+    var container = document.getElementById('bundle-detail');
     if (!container) return;
 
     var banners = app.querySelectorAll('.error-banner');
     banners.forEach(function (b) { b.remove(); });
 
-    api.projects.get(projectId).then(function (project) {
+    api.bundles.get(bundleId).then(function (data) {
+      var bundle = data.bundle;
       container.innerHTML = '';
 
       // Header with title and delete button
       var headerDiv = document.createElement('div');
-      headerDiv.className = 'project-detail-header';
+      headerDiv.className = 'bundle-detail-header';
 
       var titleEl = document.createElement('h2');
-      titleEl.textContent = project.title || '';
+      titleEl.textContent = bundle.title || '';
       headerDiv.appendChild(titleEl);
 
       var deleteBtn = document.createElement('button');
@@ -616,11 +617,11 @@
       deleteBtn.addEventListener('click', function () {
         if (deleteBtn.textContent === 'Confirm Delete?') {
           clearTimeout(deleteTimeout);
-          api.projects.delete(projectId).then(function () {
-            currentProjectId = null;
-            renderProjects();
+          api.bundles.delete(bundleId).then(function () {
+            currentBundleId = null;
+            renderBundles();
           }).catch(function (err) {
-            showError('Failed to delete project: ' + err.message);
+            showError('Failed to delete bundle: ' + err.message);
           });
         } else {
           deleteBtn.textContent = 'Confirm Delete?';
@@ -634,33 +635,33 @@
 
       // Meta info
       var meta = document.createElement('div');
-      meta.className = 'project-detail-meta';
-      meta.textContent = 'Anchor date: ' + (project.anchorDate || '');
+      meta.className = 'bundle-detail-meta';
+      meta.textContent = 'Anchor date: ' + (bundle.anchorDate || '');
       container.appendChild(meta);
 
       // Description
-      if (project.description) {
+      if (bundle.description) {
         var descDiv = document.createElement('div');
-        descDiv.className = 'project-detail-desc';
-        descDiv.innerHTML = renderMarkdownLinks(project.description);
+        descDiv.className = 'bundle-detail-desc';
+        descDiv.innerHTML = renderMarkdownLinks(bundle.description);
         container.appendChild(descDiv);
       }
 
       // Links section
       var linksSection = document.createElement('div');
-      linksSection.className = 'project-links-section';
+      linksSection.className = 'bundle-links-section';
       var linksHeader = document.createElement('h3');
       linksHeader.textContent = 'Links';
       linksHeader.style.marginBottom = '8px';
       linksSection.appendChild(linksHeader);
 
       var linksList = document.createElement('div');
-      linksList.className = 'project-links-list';
-      var projectLinks = project.links || [];
-      if (projectLinks.length === 0) {
+      linksList.className = 'bundle-links-list';
+      var bundleLinks = bundle.links || [];
+      if (bundleLinks.length === 0) {
         linksList.innerHTML = '<div class="empty-state" style="padding:8px 0;">No links yet.</div>';
       } else {
-        projectLinks.forEach(function (link, idx) {
+        bundleLinks.forEach(function (link, idx) {
           var linkRow = document.createElement('div');
           linkRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:4px;';
           linkRow.innerHTML =
@@ -689,9 +690,9 @@
           showError('URL is required.');
           return;
         }
-        var updatedLinks = (project.links || []).concat([{ name: name || url, url: url }]);
-        api.projects.update(projectId, { links: updatedLinks }).then(function () {
-          loadProjectDetail(projectId);
+        var updatedLinks = (bundle.links || []).concat([{ name: name || url, url: url }]);
+        api.bundles.update(bundleId, { links: updatedLinks }).then(function () {
+          loadBundleDetail(bundleId);
         }).catch(function (err) {
           showError('Failed to add link: ' + err.message);
         });
@@ -701,9 +702,9 @@
       linksSection.querySelectorAll('[data-remove-link]').forEach(function (btn) {
         btn.addEventListener('click', function () {
           var idx = parseInt(btn.getAttribute('data-remove-link'), 10);
-          var updatedLinks = (project.links || []).filter(function (_, i) { return i !== idx; });
-          api.projects.update(projectId, { links: updatedLinks }).then(function () {
-            loadProjectDetail(projectId);
+          var updatedLinks = (bundle.links || []).filter(function (_, i) { return i !== idx; });
+          api.bundles.update(bundleId, { links: updatedLinks }).then(function () {
+            loadBundleDetail(bundleId);
           }).catch(function (err) {
             showError('Failed to remove link: ' + err.message);
           });
@@ -717,25 +718,25 @@
       container.appendChild(tasksHeader);
 
       var tasksContainer = document.createElement('div');
-      tasksContainer.id = 'project-tasks-table';
+      tasksContainer.id = 'bundle-tasks-table';
       tasksContainer.innerHTML = '<p>Loading tasks...</p>';
       container.appendChild(tasksContainer);
 
-      loadProjectTasks(projectId);
+      loadBundleTasks(bundleId);
     }).catch(function (err) {
       container.innerHTML = '';
-      showError('Failed to load project: ' + err.message);
+      showError('Failed to load bundle: ' + err.message);
     });
   }
 
-  function loadProjectTasks(projectId) {
-    var container = document.getElementById('project-tasks-table');
+  function loadBundleTasks(bundleId) {
+    var container = document.getElementById('bundle-tasks-table');
     if (!container) return;
 
-    api.projects.tasks(projectId).then(function (data) {
+    api.bundles.tasks(bundleId).then(function (data) {
       var tasks = data.tasks || [];
       if (tasks.length === 0) {
-        container.innerHTML = '<div class="empty-state">No tasks for this project.</div>';
+        container.innerHTML = '<div class="empty-state">No tasks for this bundle.</div>';
         return;
       }
       var html = '<table><thead><tr>' +
@@ -761,7 +762,7 @@
           var current = el.getAttribute('data-status');
           var next = current === 'done' ? 'todo' : 'done';
           api.tasks.update(id, { status: next }).then(function () {
-            loadProjectTasks(projectId);
+            loadBundleTasks(bundleId);
           }).catch(function (err) {
             showError('Failed to update task: ' + err.message);
           });
@@ -769,7 +770,7 @@
       });
     }).catch(function (err) {
       container.innerHTML = '';
-      showError('Failed to load project tasks: ' + err.message);
+      showError('Failed to load bundle tasks: ' + err.message);
     });
   }
 

@@ -5,11 +5,11 @@ import {
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 
 const TABLE_TASKS = 'Tasks';
-const TABLE_PROJECTS = 'Projects';
+const TABLE_BUNDLES = 'Projects';
 const TABLE_TEMPLATES = 'Templates';
 
 /**
- * Create all application tables (Tasks, Projects, Templates) with GSIs.
+ * Create all application tables (Tasks, Bundles, Templates) with GSIs.
  * Idempotent — silently ignores ResourceInUseException if a table already exists.
  */
 async function createTables(client: DynamoDBDocumentClient): Promise<void> {
@@ -25,7 +25,7 @@ async function createTables(client: DynamoDBDocumentClient): Promise<void> {
         { AttributeName: 'SK', AttributeType: 'S' as const },
         { AttributeName: 'date', AttributeType: 'S' as const },
         { AttributeName: 'status', AttributeType: 'S' as const },
-        { AttributeName: 'projectId', AttributeType: 'S' as const },
+        { AttributeName: 'bundleId', AttributeType: 'S' as const },
       ],
       GlobalSecondaryIndexes: [
         {
@@ -37,9 +37,9 @@ async function createTables(client: DynamoDBDocumentClient): Promise<void> {
           Projection: { ProjectionType: 'ALL' as const },
         },
         {
-          IndexName: 'GSI-Project',
+          IndexName: 'GSI-Bundle',
           KeySchema: [
-            { AttributeName: 'projectId', KeyType: 'HASH' as const },
+            { AttributeName: 'bundleId', KeyType: 'HASH' as const },
             { AttributeName: 'date', KeyType: 'RANGE' as const },
           ],
           Projection: { ProjectionType: 'ALL' as const },
@@ -56,7 +56,7 @@ async function createTables(client: DynamoDBDocumentClient): Promise<void> {
       BillingMode: 'PAY_PER_REQUEST' as const,
     },
     {
-      TableName: TABLE_PROJECTS,
+      TableName: TABLE_BUNDLES,
       KeySchema: [
         { AttributeName: 'PK', KeyType: 'HASH' as const },
         { AttributeName: 'SK', KeyType: 'RANGE' as const },
@@ -97,7 +97,7 @@ async function createTables(client: DynamoDBDocumentClient): Promise<void> {
  * Delete all application tables. Used for test cleanup.
  */
 async function deleteTables(client: DynamoDBDocumentClient): Promise<void> {
-  const tableNames = [TABLE_TASKS, TABLE_PROJECTS, TABLE_TEMPLATES];
+  const tableNames = [TABLE_TASKS, TABLE_BUNDLES, TABLE_TEMPLATES];
 
   for (const tableName of tableNames) {
     try {
@@ -115,6 +115,6 @@ export {
   createTables,
   deleteTables,
   TABLE_TASKS,
-  TABLE_PROJECTS,
+  TABLE_BUNDLES,
   TABLE_TEMPLATES,
 };

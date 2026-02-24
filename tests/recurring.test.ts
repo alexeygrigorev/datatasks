@@ -277,7 +277,7 @@ describe('Recurring configs data layer', () => {
     assert.strictEqual(result.skipped, 0);
   });
 
-  it('generateRecurringTasks sets projectId from config', async () => {
+  it('generateRecurringTasks sets bundleId from config', async () => {
     const allConfigs = await listRecurringConfigs(client);
     for (const c of allConfigs) {
       if (c.enabled) {
@@ -286,14 +286,14 @@ describe('Recurring configs data layer', () => {
     }
 
     const config = await createRecurringConfig(client, {
-      description: 'Gen project task',
+      description: 'Gen bundle task',
       schedule: 'daily',
-      projectId: 'proj-gen-123',
+      bundleId: 'bundle-gen-123',
     });
 
     const result = await generateRecurringTasks(client, '2027-05-02', '2027-05-02');
     assert.strictEqual(result.generated.length, 1);
-    assert.strictEqual(result.generated[0].projectId, 'proj-gen-123');
+    assert.strictEqual(result.generated[0].bundleId, 'bundle-gen-123');
 
     await updateRecurringConfig(client, config.id, { enabled: false });
   });

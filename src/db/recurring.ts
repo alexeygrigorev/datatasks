@@ -218,8 +218,8 @@ async function generateRecurringTasks(client: DynamoDBDocumentClient, startDate:
         recurringConfigId: config.id,
       };
 
-      if (config.projectId) {
-        taskData.projectId = config.projectId;
+      if (config.bundleId) {
+        taskData.bundleId = config.bundleId;
       }
 
       const task = await createTask(client, taskData);

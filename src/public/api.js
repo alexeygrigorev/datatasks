@@ -50,32 +50,32 @@
       },
     },
 
-    projects: {
+    bundles: {
       list: function () {
-        return fetch('/api/projects').then(handleResponse);
+        return fetch('/api/bundles').then(handleResponse);
       },
       get: function (id) {
-        return fetch('/api/projects/' + id).then(handleResponse);
+        return fetch('/api/bundles/' + id).then(handleResponse);
       },
       create: function (data) {
-        return fetch('/api/projects', {
+        return fetch('/api/bundles', {
           method: 'POST',
           headers: JSON_HEADERS,
           body: JSON.stringify(data),
         }).then(handleResponse);
       },
       update: function (id, data) {
-        return fetch('/api/projects/' + id, {
+        return fetch('/api/bundles/' + id, {
           method: 'PUT',
           headers: JSON_HEADERS,
           body: JSON.stringify(data),
         }).then(handleResponse);
       },
       delete: function (id) {
-        return fetch('/api/projects/' + id, { method: 'DELETE' }).then(handleResponse);
+        return fetch('/api/bundles/' + id, { method: 'DELETE' }).then(handleResponse);
       },
       tasks: function (id) {
-        return fetch('/api/projects/' + id + '/tasks').then(handleResponse);
+        return fetch('/api/bundles/' + id + '/tasks').then(handleResponse);
       },
     },
 

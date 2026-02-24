@@ -54,7 +54,7 @@ describe('API — CRUD for tasks', () => {
           description: 'Review draft',
           date: '2026-03-10',
           comment: 'Important',
-          projectId: 'proj-1',
+          bundleId: 'bundle-1',
           source: 'telegram',
         }),
       };
@@ -63,7 +63,7 @@ describe('API — CRUD for tasks', () => {
 
       const body = JSON.parse(res.body);
       assert.strictEqual(body.comment, 'Important');
-      assert.strictEqual(body.projectId, 'proj-1');
+      assert.strictEqual(body.bundleId, 'bundle-1');
       assert.strictEqual(body.source, 'telegram');
     });
 
@@ -181,32 +181,32 @@ describe('API — CRUD for tasks', () => {
       assert.strictEqual(body.tasks[0].description, 'R2');
     });
 
-    it('returns tasks filtered by projectId', async () => {
-      const pid = 'proj-filter-' + crypto.randomUUID();
+    it('returns tasks filtered by bundleId', async () => {
+      const bid = 'bundle-filter-' + crypto.randomUUID();
       await handler({
         httpMethod: 'POST', path: '/api/tasks',
-        body: JSON.stringify({ description: 'P1', date: '2092-01-01', projectId: pid }),
+        body: JSON.stringify({ description: 'P1', date: '2092-01-01', bundleId: bid }),
       }, {});
       await handler({
         httpMethod: 'POST', path: '/api/tasks',
-        body: JSON.stringify({ description: 'P2', date: '2092-01-02', projectId: pid }),
+        body: JSON.stringify({ description: 'P2', date: '2092-01-02', bundleId: bid }),
       }, {});
       await handler({
         httpMethod: 'POST', path: '/api/tasks',
-        body: JSON.stringify({ description: 'P3', date: '2092-01-01', projectId: 'other-proj' }),
+        body: JSON.stringify({ description: 'P3', date: '2092-01-01', bundleId: 'other-bundle' }),
       }, {});
 
       const res = await handler({
         httpMethod: 'GET',
         path: '/api/tasks',
-        queryStringParameters: { projectId: pid },
+        queryStringParameters: { bundleId: bid },
       }, {});
 
       assert.strictEqual(res.statusCode, 200);
       const body = JSON.parse(res.body);
       assert.strictEqual(body.tasks.length, 2);
       for (const task of body.tasks) {
-        assert.strictEqual(task.projectId, pid);
+        assert.strictEqual(task.bundleId, bid);
       }
     });
 
@@ -254,7 +254,7 @@ describe('API — CRUD for tasks', () => {
 
       assert.strictEqual(res.statusCode, 400);
       const body = JSON.parse(res.body);
-      assert.ok(body.error.includes('At least one filter is required'));
+      assert.ok(body.error.includes('At least one filter is required'), body.error);
     });
 
     it('returns 400 when empty queryStringParameters object', async () => {
@@ -266,7 +266,7 @@ describe('API — CRUD for tasks', () => {
 
       assert.strictEqual(res.statusCode, 400);
       const body = JSON.parse(res.body);
-      assert.ok(body.error.includes('At least one filter is required'));
+      assert.ok(body.error.includes('At least one filter is required'), body.error);
     });
 
     it('returns 400 when startDate provided without endDate', async () => {
@@ -626,7 +626,7 @@ describe('API — CRUD for tasks', () => {
       const created = JSON.parse(createRes.body);
       assert.ok(created.id);
       assert.strictEqual(created.source, 'manual');
-      assert.strictEqual(created.projectId, undefined);
+      assert.strictEqual(created.bundleId, undefined);
       assert.strictEqual(created.status, 'todo');
       assert.strictEqual(created.comment, 'Initial comment');
 

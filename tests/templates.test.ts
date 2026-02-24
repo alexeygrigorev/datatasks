@@ -106,10 +106,10 @@ describe('Templates data layer', () => {
       ],
     });
 
-    const projectId = 'release-project-1';
+    const bundleId = 'release-bundle-1';
     const anchorDate = '2026-03-10';
 
-    const tasks = await instantiateTemplate(client, template.id, projectId, anchorDate);
+    const tasks = await instantiateTemplate(client, template.id, bundleId, anchorDate);
 
     assert.strictEqual(tasks.length, 3);
 
@@ -119,7 +119,7 @@ describe('Templates data layer', () => {
     // -2 days from 2026-03-10 = 2026-03-08
     assert.strictEqual(tasks[0].date, '2026-03-08');
     assert.strictEqual(tasks[0].description, 'Prepare release');
-    assert.strictEqual(tasks[0].projectId, projectId);
+    assert.strictEqual(tasks[0].bundleId, bundleId);
     assert.strictEqual(tasks[0].source, 'template');
     assert.strictEqual(tasks[0].templateTaskRef, 'prep');
     assert.strictEqual(tasks[0].status, 'todo');
@@ -144,7 +144,7 @@ describe('Templates data layer', () => {
 
   it('instantiateTemplate throws for non-existent template', async () => {
     await assert.rejects(
-      () => instantiateTemplate(client, 'no-such-template', 'proj', '2026-01-01'),
+      () => instantiateTemplate(client, 'no-such-template', 'bundle-1', '2026-01-01'),
       { message: 'Template not found: no-such-template' }
     );
   });

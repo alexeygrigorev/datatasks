@@ -16,7 +16,7 @@ describe('SPA shell and static files', () => {
     assert.strictEqual(result.headers!['Content-Type'], 'text/html');
 
     assert.ok(result.body.includes('href="#/tasks"'), 'should have Tasks nav link');
-    assert.ok(result.body.includes('href="#/projects"'), 'should have Projects nav link');
+    assert.ok(result.body.includes('href="#/bundles"'), 'should have Bundles nav link');
     assert.ok(result.body.includes('href="#/templates"'), 'should have Templates nav link');
 
     assert.ok(result.body.includes('<script src="/public/api.js"></script>'), 'should load api.js');

@@ -14,7 +14,7 @@
  *   --dry-run         Print what would be imported without writing to DB
  *   --templates-only  Only import Trello templates
  *   --csv-only        Only import CSV tasks
- *   --cards-only      Only import active Trello cards as projects+tasks
+ *   --cards-only      Only import active Trello cards as bundles+tasks
  *   --include-done    Also import done CSV tasks (skipped by default)
  *
  * Data sources:
@@ -30,7 +30,7 @@ import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { getClient, startLocal } from '../src/db/client';
 import { createTables } from '../src/db/setup';
 import { createTemplate, listTemplates } from '../src/db/templates';
-import { createProject } from '../src/db/projects';
+import { createBundle } from '../src/db/bundles';
 import { createTask } from '../src/db/tasks';
 
 // ---------------------------------------------------------------------------
@@ -257,7 +257,7 @@ function extractInstructionsUrl(text: string): { description: string; instructio
   return { description: cleaned, instructionsUrl: url };
 }
 
-function extractProjectLinks(card: TrelloCard): { name: string; url: string }[] {
+function extractBundleLinks(card: TrelloCard): { name: string; url: string }[] {
   const attachments = card.attachments || [];
   return attachments
     .filter((a) => a.url && !a.url.includes('trello.com/1/cards/'))
@@ -276,7 +276,7 @@ function slugify(str: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Trello card -> Project + Tasks mapping
+// Trello card -> Bundle + Tasks mapping
 // ---------------------------------------------------------------------------
 
 function extractDateFromCardName(name: string): string | null {
@@ -298,7 +298,7 @@ function extractDateFromCardName(name: string): string | null {
   return null;
 }
 
-function trelloCardToProject(card: TrelloCard) {
+function trelloCardToBundle(card: TrelloCard) {
   const fallbackDate = card.dateLastActivity
     ? card.dateLastActivity.split('T')[0]
     : new Date().toISOString().split('T')[0];
@@ -306,19 +306,19 @@ function trelloCardToProject(card: TrelloCard) {
     ? card.due.split('T')[0]
     : extractDateFromCardName(card.name) || fallbackDate;
 
-  const project: Record<string, unknown> = {
+  const bundle: Record<string, unknown> = {
     title: card.name,
     anchorDate,
     description: card.desc || null,
   };
 
-  const links = extractProjectLinks(card);
-  if (links.length > 0) project.links = links;
+  const links = extractBundleLinks(card);
+  if (links.length > 0) bundle.links = links;
 
-  return project;
+  return bundle;
 }
 
-function trelloChecklistItemsToTasks(card: TrelloCard, boardChecklists: TrelloChecklist[], projectId: string | null) {
+function trelloChecklistItemsToTasks(card: TrelloCard, boardChecklists: TrelloChecklist[], bundleId: string | null) {
   const cardChecklists = (card.idChecklists || [])
     .map((clId) => boardChecklists.find((cl) => cl.id === clId))
     .filter((cl): cl is TrelloChecklist => Boolean(cl))
@@ -343,7 +343,7 @@ function trelloChecklistItemsToTasks(card: TrelloCard, boardChecklists: TrelloCh
         source: 'manual',
       };
       if (instructionsUrl) taskData.comment = instructionsUrl;
-      if (projectId) taskData.projectId = projectId;
+      if (bundleId) taskData.bundleId = bundleId;
       tasks.push(taskData);
     }
   }
@@ -489,7 +489,7 @@ async function main() {
 
   const stats = {
     templates: 0,
-    projects: 0,
+    bundles: 0,
     tasks: 0,
     recurringConfigs: 0,
     skippedDuplicateTemplates: 0,
@@ -547,29 +547,29 @@ async function main() {
   }
 
   // -----------------------------------------------------------------------
-  // 2. Import active Trello cards as projects + tasks
+  // 2. Import active Trello cards as bundles + tasks
   // -----------------------------------------------------------------------
 
   if (IMPORT_ALL || CARDS_ONLY) {
-    console.log('\n--- Importing Active Trello Cards as Projects ---');
+    console.log('\n--- Importing Active Trello Cards as Bundles ---');
 
     for (const card of activeCards) {
-      const projectData = trelloCardToProject(card);
+      const bundleData = trelloCardToBundle(card);
       const listName = listMap[card.idList]?.name || 'Unknown';
 
-      console.log(`  Project: ${(projectData.title as string).substring(0, 70)} [${listName}]`);
+      console.log(`  Bundle: ${(bundleData.title as string).substring(0, 70)} [${listName}]`);
 
-      let projectId: string | null = null;
+      let bundleId: string | null = null;
 
       if (!DRY_RUN) {
-        const project = await createProject(client!, projectData);
-        projectId = project.id;
+        const bundle = await createBundle(client!, bundleData);
+        bundleId = bundle.id;
       }
 
-      stats.projects++;
+      stats.bundles++;
 
       // Create tasks from checklists
-      const tasks = trelloChecklistItemsToTasks(card, allChecklists, projectId);
+      const tasks = trelloChecklistItemsToTasks(card, allChecklists, bundleId);
       for (const task of tasks) {
         if (DRY_RUN) {
           console.log(`    [${task.status}] ${(task.description as string).substring(0, 70)}`);
@@ -647,7 +647,7 @@ async function main() {
 
   console.log('\n=== Migration Summary ===');
   console.log(`  Templates created:           ${stats.templates}`);
-  console.log(`  Projects created:            ${stats.projects}`);
+  console.log(`  Bundles created:             ${stats.bundles}`);
   console.log(`  Tasks created:               ${stats.tasks}`);
   console.log(`  Skipped duplicate templates: ${stats.skippedDuplicateTemplates}`);
   console.log(`  Skipped recurring tasks:     ${stats.skippedRecurringTasks}`);

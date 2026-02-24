@@ -11,7 +11,7 @@ import {
   deleteTask,
   listTasksByDate,
   listTasksByDateRange,
-  listTasksByProject,
+  listTasksByBundle,
   listTasksByStatus,
 } from '../src/db/tasks';
 
@@ -33,7 +33,7 @@ describe('Tasks data layer', () => {
     const task = await createTask(client, {
       description: 'Write unit tests',
       date: '2026-02-23',
-      projectId: 'proj-1',
+      bundleId: 'bundle-1',
     });
 
     assert.ok(task.id, 'task should have an id');
@@ -41,7 +41,7 @@ describe('Tasks data layer', () => {
     assert.ok(task.updatedAt, 'task should have updatedAt');
     assert.strictEqual(task.description, 'Write unit tests');
     assert.strictEqual(task.date, '2026-02-23');
-    assert.strictEqual(task.projectId, 'proj-1');
+    assert.strictEqual(task.bundleId, 'bundle-1');
     assert.strictEqual(task.status, 'todo');
     // PK/SK should be stripped
     assert.strictEqual((task as Record<string, unknown>).PK, undefined);
@@ -125,13 +125,13 @@ describe('Tasks data layer', () => {
     assert.deepStrictEqual(descriptions, ['R2', 'R3']);
   });
 
-  it('listTasksByProject returns tasks for a given project', async () => {
-    const pid = 'project-unique-' + crypto.randomUUID();
-    await createTask(client, { description: 'P1', date: '2026-03-01', projectId: pid, status: 'todo' });
-    await createTask(client, { description: 'P2', date: '2026-03-02', projectId: pid, status: 'todo' });
-    await createTask(client, { description: 'P3', date: '2026-03-01', projectId: 'other', status: 'todo' });
+  it('listTasksByBundle returns tasks for a given bundle', async () => {
+    const bid = 'bundle-unique-' + crypto.randomUUID();
+    await createTask(client, { description: 'P1', date: '2026-03-01', bundleId: bid, status: 'todo' });
+    await createTask(client, { description: 'P2', date: '2026-03-02', bundleId: bid, status: 'todo' });
+    await createTask(client, { description: 'P3', date: '2026-03-01', bundleId: 'other', status: 'todo' });
 
-    const tasks = await listTasksByProject(client, pid);
+    const tasks = await listTasksByBundle(client, bid);
     assert.strictEqual(tasks.length, 2);
     const descriptions = tasks.map((t) => t.description).sort();
     assert.deepStrictEqual(descriptions, ['P1', 'P2']);

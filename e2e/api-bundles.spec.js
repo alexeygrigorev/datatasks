@@ -6,32 +6,32 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // Helper: ISO-8601 timestamp pattern
 const ISO_TS_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/;
 
-test.describe('Project CRUD API', () => {
+test.describe('Bundle CRUD API', () => {
   // ──────────────────────────────────────────────────────────────────
-  // POST /api/projects — Create
+  // POST /api/bundles — Create
   // ──────────────────────────────────────────────────────────────────
 
-  test.describe('POST /api/projects', () => {
-    test('creates a project with required fields only (title + anchorDate)', async ({ request }) => {
-      const res = await request.post('/api/projects', {
+  test.describe('POST /api/bundles', () => {
+    test('creates a bundle with required fields only (title + anchorDate)', async ({ request }) => {
+      const res = await request.post('/api/bundles', {
         data: { title: 'ML Zoomcamp 2026', anchorDate: '2026-06-01' },
       });
       expect(res.status()).toBe(201);
 
       const body = await res.json();
-      expect(body.project).toBeDefined();
-      expect(body.project.id).toMatch(UUID_RE);
-      expect(body.project.title).toBe('ML Zoomcamp 2026');
-      expect(body.project.anchorDate).toBe('2026-06-01');
-      expect(body.project.createdAt).toMatch(ISO_TS_RE);
-      expect(body.project.updatedAt).toMatch(ISO_TS_RE);
+      expect(body.bundle).toBeDefined();
+      expect(body.bundle.id).toMatch(UUID_RE);
+      expect(body.bundle.title).toBe('ML Zoomcamp 2026');
+      expect(body.bundle.anchorDate).toBe('2026-06-01');
+      expect(body.bundle.createdAt).toMatch(ISO_TS_RE);
+      expect(body.bundle.updatedAt).toMatch(ISO_TS_RE);
 
       // No tasks key when no templateId provided
       expect(body.tasks).toBeUndefined();
     });
 
-    test('creates a project with optional description', async ({ request }) => {
-      const res = await request.post('/api/projects', {
+    test('creates a bundle with optional description', async ({ request }) => {
+      const res = await request.post('/api/bundles', {
         data: {
           title: 'Newsletter',
           anchorDate: '2026-03-01',
@@ -41,13 +41,13 @@ test.describe('Project CRUD API', () => {
       expect(res.status()).toBe(201);
 
       const body = await res.json();
-      expect(body.project.description).toBe('Weekly newsletter');
-      expect(body.project.title).toBe('Newsletter');
-      expect(body.project.anchorDate).toBe('2026-03-01');
+      expect(body.bundle.description).toBe('Weekly newsletter');
+      expect(body.bundle.title).toBe('Newsletter');
+      expect(body.bundle.anchorDate).toBe('2026-03-01');
     });
 
     test('returns 400 when title is missing', async ({ request }) => {
-      const res = await request.post('/api/projects', {
+      const res = await request.post('/api/bundles', {
         data: { anchorDate: '2026-06-01' },
       });
       expect(res.status()).toBe(400);
@@ -58,7 +58,7 @@ test.describe('Project CRUD API', () => {
     });
 
     test('returns 400 when anchorDate is missing', async ({ request }) => {
-      const res = await request.post('/api/projects', {
+      const res = await request.post('/api/bundles', {
         data: { title: 'Test' },
       });
       expect(res.status()).toBe(400);
@@ -69,7 +69,7 @@ test.describe('Project CRUD API', () => {
     });
 
     test('returns 400 for invalid anchorDate format', async ({ request }) => {
-      const res = await request.post('/api/projects', {
+      const res = await request.post('/api/bundles', {
         data: { title: 'Bad date', anchorDate: '06-01-2026' },
       });
       expect(res.status()).toBe(400);
@@ -79,7 +79,7 @@ test.describe('Project CRUD API', () => {
     });
 
     test('returns 400 for empty title string', async ({ request }) => {
-      const res = await request.post('/api/projects', {
+      const res = await request.post('/api/bundles', {
         data: { title: '   ', anchorDate: '2026-06-01' },
       });
       expect(res.status()).toBe(400);
@@ -90,7 +90,7 @@ test.describe('Project CRUD API', () => {
     });
 
     test('returns 201 and Content-Type application/json', async ({ request }) => {
-      const res = await request.post('/api/projects', {
+      const res = await request.post('/api/bundles', {
         data: { title: 'Content-Type test', anchorDate: '2026-07-01' },
       });
       expect(res.status()).toBe(201);
@@ -99,162 +99,162 @@ test.describe('Project CRUD API', () => {
   });
 
   // ──────────────────────────────────────────────────────────────────
-  // GET /api/projects — List all
+  // GET /api/bundles — List all
   // ──────────────────────────────────────────────────────────────────
 
-  test.describe('GET /api/projects', () => {
-    test('lists all projects as an array', async ({ request }) => {
-      // Ensure at least one project exists
-      await request.post('/api/projects', {
+  test.describe('GET /api/bundles', () => {
+    test('lists all bundles as an array', async ({ request }) => {
+      // Ensure at least one bundle exists
+      await request.post('/api/bundles', {
         data: { title: 'List test', anchorDate: '2026-07-01' },
       });
 
-      const res = await request.get('/api/projects');
+      const res = await request.get('/api/bundles');
       expect(res.status()).toBe(200);
 
       const body = await res.json();
-      expect(body.projects).toBeInstanceOf(Array);
-      expect(body.projects.length).toBeGreaterThan(0);
+      expect(body.bundles).toBeInstanceOf(Array);
+      expect(body.bundles.length).toBeGreaterThan(0);
     });
 
     test('returns Content-Type application/json', async ({ request }) => {
-      const res = await request.get('/api/projects');
+      const res = await request.get('/api/bundles');
       expect(res.status()).toBe(200);
       expect(res.headers()['content-type']).toBe('application/json');
     });
 
-    test('each project in the list has expected fields', async ({ request }) => {
-      await request.post('/api/projects', {
+    test('each bundle in the list has expected fields', async ({ request }) => {
+      await request.post('/api/bundles', {
         data: { title: 'Fields check', anchorDate: '2026-08-01' },
       });
 
-      const res = await request.get('/api/projects');
+      const res = await request.get('/api/bundles');
       const body = await res.json();
 
-      const project = body.projects.find((p) => p.title === 'Fields check');
-      expect(project).toBeDefined();
-      expect(project.id).toMatch(UUID_RE);
-      expect(project.anchorDate).toBe('2026-08-01');
-      expect(project.createdAt).toBeTruthy();
-      expect(project.updatedAt).toBeTruthy();
+      const bundle = body.bundles.find((b) => b.title === 'Fields check');
+      expect(bundle).toBeDefined();
+      expect(bundle.id).toMatch(UUID_RE);
+      expect(bundle.anchorDate).toBe('2026-08-01');
+      expect(bundle.createdAt).toBeTruthy();
+      expect(bundle.updatedAt).toBeTruthy();
     });
   });
 
   // ──────────────────────────────────────────────────────────────────
-  // GET /api/projects/:id — Single project
+  // GET /api/bundles/:id — Single bundle
   // ──────────────────────────────────────────────────────────────────
 
-  test.describe('GET /api/projects/:id', () => {
-    test('returns the project when it exists', async ({ request }) => {
-      const create = await request.post('/api/projects', {
+  test.describe('GET /api/bundles/:id', () => {
+    test('returns the bundle when it exists', async ({ request }) => {
+      const create = await request.post('/api/bundles', {
         data: { title: 'Fetch me', anchorDate: '2026-07-01', description: 'desc' },
       });
-      const { project } = await create.json();
+      const { bundle } = await create.json();
 
-      const res = await request.get(`/api/projects/${project.id}`);
+      const res = await request.get(`/api/bundles/${bundle.id}`);
       expect(res.status()).toBe(200);
 
       const body = await res.json();
-      expect(body.project.id).toBe(project.id);
-      expect(body.project.title).toBe('Fetch me');
-      expect(body.project.description).toBe('desc');
-      expect(body.project.anchorDate).toBe('2026-07-01');
+      expect(body.bundle.id).toBe(bundle.id);
+      expect(body.bundle.title).toBe('Fetch me');
+      expect(body.bundle.description).toBe('desc');
+      expect(body.bundle.anchorDate).toBe('2026-07-01');
     });
 
-    test('returns 404 for a non-existent project', async ({ request }) => {
-      const res = await request.get('/api/projects/does-not-exist');
+    test('returns 404 for a non-existent bundle', async ({ request }) => {
+      const res = await request.get('/api/bundles/does-not-exist');
       expect(res.status()).toBe(404);
 
       const body = await res.json();
-      expect(body.error).toBe('Project not found');
+      expect(body.error).toBe('Bundle not found');
     });
   });
 
   // ──────────────────────────────────────────────────────────────────
-  // PUT /api/projects/:id — Update
+  // PUT /api/bundles/:id — Update
   // ──────────────────────────────────────────────────────────────────
 
-  test.describe('PUT /api/projects/:id', () => {
-    test('updates the title of an existing project', async ({ request }) => {
-      const create = await request.post('/api/projects', {
+  test.describe('PUT /api/bundles/:id', () => {
+    test('updates the title of an existing bundle', async ({ request }) => {
+      const create = await request.post('/api/bundles', {
         data: { title: 'Old Title', anchorDate: '2026-07-01' },
       });
-      const { project: original } = await create.json();
+      const { bundle: original } = await create.json();
 
-      const res = await request.put(`/api/projects/${original.id}`, {
+      const res = await request.put(`/api/bundles/${original.id}`, {
         data: { title: 'New Title' },
       });
       expect(res.status()).toBe(200);
 
       const body = await res.json();
-      expect(body.project.title).toBe('New Title');
-      expect(body.project.id).toBe(original.id);
+      expect(body.bundle.title).toBe('New Title');
+      expect(body.bundle.id).toBe(original.id);
     });
 
     test('updates the description', async ({ request }) => {
-      const create = await request.post('/api/projects', {
-        data: { title: 'Desc project', anchorDate: '2026-07-01', description: 'original' },
+      const create = await request.post('/api/bundles', {
+        data: { title: 'Desc bundle', anchorDate: '2026-07-01', description: 'original' },
       });
-      const { project } = await create.json();
+      const { bundle } = await create.json();
 
-      const res = await request.put(`/api/projects/${project.id}`, {
+      const res = await request.put(`/api/bundles/${bundle.id}`, {
         data: { description: 'updated description' },
       });
       expect(res.status()).toBe(200);
 
       const body = await res.json();
-      expect(body.project.description).toBe('updated description');
+      expect(body.bundle.description).toBe('updated description');
     });
 
     test('updates the anchorDate', async ({ request }) => {
-      const create = await request.post('/api/projects', {
-        data: { title: 'Date project', anchorDate: '2026-07-01' },
+      const create = await request.post('/api/bundles', {
+        data: { title: 'Date bundle', anchorDate: '2026-07-01' },
       });
-      const { project } = await create.json();
+      const { bundle } = await create.json();
 
-      const res = await request.put(`/api/projects/${project.id}`, {
+      const res = await request.put(`/api/bundles/${bundle.id}`, {
         data: { anchorDate: '2026-08-15' },
       });
       expect(res.status()).toBe(200);
 
       const body = await res.json();
-      expect(body.project.anchorDate).toBe('2026-08-15');
+      expect(body.bundle.anchorDate).toBe('2026-08-15');
     });
 
     test('updatedAt changes after an update', async ({ request }) => {
-      const create = await request.post('/api/projects', {
-        data: { title: 'Timestamp project', anchorDate: '2026-07-01' },
+      const create = await request.post('/api/bundles', {
+        data: { title: 'Timestamp bundle', anchorDate: '2026-07-01' },
       });
-      const { project: original } = await create.json();
+      const { bundle: original } = await create.json();
 
       // Small delay so timestamps differ
       await new Promise((r) => setTimeout(r, 50));
 
-      const res = await request.put(`/api/projects/${original.id}`, {
+      const res = await request.put(`/api/bundles/${original.id}`, {
         data: { title: 'Updated timestamp' },
       });
-      const { project: updated } = await res.json();
+      const { bundle: updated } = await res.json();
 
       expect(updated.updatedAt).not.toBe(original.updatedAt);
     });
 
-    test('returns 404 for a non-existent project', async ({ request }) => {
-      const res = await request.put('/api/projects/does-not-exist', {
+    test('returns 404 for a non-existent bundle', async ({ request }) => {
+      const res = await request.put('/api/bundles/does-not-exist', {
         data: { title: 'New' },
       });
       expect(res.status()).toBe(404);
 
       const body = await res.json();
-      expect(body.error).toBe('Project not found');
+      expect(body.error).toBe('Bundle not found');
     });
 
     test('returns 400 when body has no valid fields', async ({ request }) => {
-      const create = await request.post('/api/projects', {
+      const create = await request.post('/api/bundles', {
         data: { title: 'No valid fields', anchorDate: '2026-07-01' },
       });
-      const { project } = await create.json();
+      const { bundle } = await create.json();
 
-      const res = await request.put(`/api/projects/${project.id}`, {
+      const res = await request.put(`/api/bundles/${bundle.id}`, {
         data: { unknownField: 'value' },
       });
       expect(res.status()).toBe(400);
@@ -262,17 +262,17 @@ test.describe('Project CRUD API', () => {
   });
 
   // ──────────────────────────────────────────────────────────────────
-  // DELETE /api/projects/:id — Delete
+  // DELETE /api/bundles/:id — Delete
   // ──────────────────────────────────────────────────────────────────
 
-  test.describe('DELETE /api/projects/:id', () => {
-    test('deletes an existing project and returns 204', async ({ request }) => {
-      const create = await request.post('/api/projects', {
+  test.describe('DELETE /api/bundles/:id', () => {
+    test('deletes an existing bundle and returns 204', async ({ request }) => {
+      const create = await request.post('/api/bundles', {
         data: { title: 'Delete me', anchorDate: '2026-07-01' },
       });
-      const { project } = await create.json();
+      const { bundle } = await create.json();
 
-      const del = await request.delete(`/api/projects/${project.id}`);
+      const del = await request.delete(`/api/bundles/${bundle.id}`);
       expect(del.status()).toBe(204);
 
       // Verify the response body is empty
@@ -280,39 +280,39 @@ test.describe('Project CRUD API', () => {
       expect(text).toBe('');
     });
 
-    test('deleted project is no longer retrievable', async ({ request }) => {
-      const create = await request.post('/api/projects', {
+    test('deleted bundle is no longer retrievable', async ({ request }) => {
+      const create = await request.post('/api/bundles', {
         data: { title: 'Delete and verify', anchorDate: '2026-07-01' },
       });
-      const { project } = await create.json();
+      const { bundle } = await create.json();
 
-      await request.delete(`/api/projects/${project.id}`);
+      await request.delete(`/api/bundles/${bundle.id}`);
 
-      const get = await request.get(`/api/projects/${project.id}`);
+      const get = await request.get(`/api/bundles/${bundle.id}`);
       expect(get.status()).toBe(404);
     });
 
-    test('returns 404 for a non-existent project', async ({ request }) => {
-      const res = await request.delete('/api/projects/does-not-exist');
+    test('returns 404 for a non-existent bundle', async ({ request }) => {
+      const res = await request.delete('/api/bundles/does-not-exist');
       expect(res.status()).toBe(404);
 
       const body = await res.json();
-      expect(body.error).toBe('Project not found');
+      expect(body.error).toBe('Bundle not found');
     });
   });
 
   // ──────────────────────────────────────────────────────────────────
-  // GET /api/projects/:id/tasks — Project tasks
+  // GET /api/bundles/:id/tasks — Bundle tasks
   // ──────────────────────────────────────────────────────────────────
 
-  test.describe('GET /api/projects/:id/tasks', () => {
-    test('returns an empty tasks array for a project with no tasks', async ({ request }) => {
-      const create = await request.post('/api/projects', {
-        data: { title: 'No tasks project', anchorDate: '2026-07-01' },
+  test.describe('GET /api/bundles/:id/tasks', () => {
+    test('returns an empty tasks array for a bundle with no tasks', async ({ request }) => {
+      const create = await request.post('/api/bundles', {
+        data: { title: 'No tasks bundle', anchorDate: '2026-07-01' },
       });
-      const { project } = await create.json();
+      const { bundle } = await create.json();
 
-      const res = await request.get(`/api/projects/${project.id}/tasks`);
+      const res = await request.get(`/api/bundles/${bundle.id}/tasks`);
       expect(res.status()).toBe(200);
 
       const body = await res.json();
@@ -320,7 +320,7 @@ test.describe('Project CRUD API', () => {
       expect(body.tasks).toHaveLength(0);
     });
 
-    test('returns tasks that belong to the project', async ({ request }) => {
+    test('returns tasks that belong to the bundle', async ({ request }) => {
       // Create a template with 2 tasks
       const tmplRes = await request.post('/api/templates', {
         data: {
@@ -333,36 +333,36 @@ test.describe('Project CRUD API', () => {
       });
       const { template } = await tmplRes.json();
 
-      // Create project with that template to generate tasks
-      const create = await request.post('/api/projects', {
+      // Create bundle with that template to generate tasks
+      const create = await request.post('/api/bundles', {
         data: { title: 'Has tasks', anchorDate: '2026-05-01', templateId: template.id },
       });
-      const { project } = await create.json();
+      const { bundle } = await create.json();
 
-      const res = await request.get(`/api/projects/${project.id}/tasks`);
+      const res = await request.get(`/api/bundles/${bundle.id}/tasks`);
       expect(res.status()).toBe(200);
 
       const body = await res.json();
       expect(body.tasks).toHaveLength(2);
-      expect(body.tasks.every((t) => t.projectId === project.id)).toBe(true);
+      expect(body.tasks.every((t) => t.bundleId === bundle.id)).toBe(true);
     });
 
-    test('returns 404 for a non-existent project', async ({ request }) => {
-      const res = await request.get('/api/projects/does-not-exist/tasks');
+    test('returns 404 for a non-existent bundle', async ({ request }) => {
+      const res = await request.get('/api/bundles/does-not-exist/tasks');
       expect(res.status()).toBe(404);
 
       const body = await res.json();
-      expect(body.error).toBe('Project not found');
+      expect(body.error).toBe('Bundle not found');
     });
   });
 });
 
 // ──────────────────────────────────────────────────────────────────
-// Project with template
+// Bundle with template
 // ──────────────────────────────────────────────────────────────────
 
-test.describe('Project with template', () => {
-  test('creates project from template and generates tasks with correct dates', async ({ request }) => {
+test.describe('Bundle with template', () => {
+  test('creates bundle from template and generates tasks with correct dates', async ({ request }) => {
     // Create template with offsets -7, 0, +3
     const tmplRes = await request.post('/api/templates', {
       data: {
@@ -376,8 +376,8 @@ test.describe('Project with template', () => {
     });
     const { template } = await tmplRes.json();
 
-    // Create project with anchorDate 2026-04-15
-    const res = await request.post('/api/projects', {
+    // Create bundle with anchorDate 2026-04-15
+    const res = await request.post('/api/bundles', {
       data: {
         title: 'Community Meetup',
         anchorDate: '2026-04-15',
@@ -388,11 +388,11 @@ test.describe('Project with template', () => {
 
     const body = await res.json();
 
-    // Verify project
-    expect(body.project).toBeDefined();
-    expect(body.project.id).toMatch(UUID_RE);
-    expect(body.project.title).toBe('Community Meetup');
-    expect(body.project.templateId).toBe(template.id);
+    // Verify bundle
+    expect(body.bundle).toBeDefined();
+    expect(body.bundle.id).toMatch(UUID_RE);
+    expect(body.bundle.title).toBe('Community Meetup');
+    expect(body.bundle.templateId).toBe(template.id);
 
     // Verify tasks array is returned
     expect(body.tasks).toBeDefined();
@@ -403,7 +403,7 @@ test.describe('Project with template', () => {
     expect(dates).toEqual(['2026-04-08', '2026-04-15', '2026-04-18']);
   });
 
-  test('template tasks have source "template" and correct projectId', async ({ request }) => {
+  test('template tasks have source "template" and correct bundleId', async ({ request }) => {
     const tmplRes = await request.post('/api/templates', {
       data: {
         name: 'Source check template', type: 'test',
@@ -415,9 +415,9 @@ test.describe('Project with template', () => {
     });
     const { template } = await tmplRes.json();
 
-    const res = await request.post('/api/projects', {
+    const res = await request.post('/api/bundles', {
       data: {
-        title: 'Source check project',
+        title: 'Source check bundle',
         anchorDate: '2026-05-01',
         templateId: template.id,
       },
@@ -427,11 +427,11 @@ test.describe('Project with template', () => {
     expect(body.tasks).toHaveLength(2);
     for (const task of body.tasks) {
       expect(task.source).toBe('template');
-      expect(task.projectId).toBe(body.project.id);
+      expect(task.bundleId).toBe(body.bundle.id);
     }
   });
 
-  test('template tasks are retrievable via GET /api/projects/:id/tasks', async ({ request }) => {
+  test('template tasks are retrievable via GET /api/bundles/:id/tasks', async ({ request }) => {
     const tmplRes = await request.post('/api/templates', {
       data: {
         name: 'Retrieve template', type: 'test',
@@ -444,23 +444,23 @@ test.describe('Project with template', () => {
     });
     const { template } = await tmplRes.json();
 
-    const createRes = await request.post('/api/projects', {
+    const createRes = await request.post('/api/bundles', {
       data: {
         title: 'Conference',
         anchorDate: '2026-04-15',
         templateId: template.id,
       },
     });
-    const { project, tasks: createdTasks } = await createRes.json();
+    const { bundle, tasks: createdTasks } = await createRes.json();
 
     // Verify via the sub-route
-    const tasksRes = await request.get(`/api/projects/${project.id}/tasks`);
+    const tasksRes = await request.get(`/api/bundles/${bundle.id}/tasks`);
     expect(tasksRes.status()).toBe(200);
 
     const tasksBody = await tasksRes.json();
     expect(tasksBody.tasks).toHaveLength(3);
     expect(tasksBody.tasks.every((t) => t.source === 'template')).toBe(true);
-    expect(tasksBody.tasks.every((t) => t.projectId === project.id)).toBe(true);
+    expect(tasksBody.tasks.every((t) => t.bundleId === bundle.id)).toBe(true);
 
     // Verify dates match what was returned at creation
     const fetchedDates = tasksBody.tasks.map((t) => t.date).sort();
@@ -480,9 +480,9 @@ test.describe('Project with template', () => {
     });
     const { template } = await tmplRes.json();
 
-    const res = await request.post('/api/projects', {
+    const res = await request.post('/api/bundles', {
       data: {
-        title: 'RefId project',
+        title: 'RefId bundle',
         anchorDate: '2026-06-10',
         templateId: template.id,
       },
@@ -494,7 +494,7 @@ test.describe('Project with template', () => {
   });
 
   test('returns 404 when templateId does not exist', async ({ request }) => {
-    const res = await request.post('/api/projects', {
+    const res = await request.post('/api/bundles', {
       data: {
         title: 'Bad template',
         anchorDate: '2026-01-01',
@@ -507,14 +507,14 @@ test.describe('Project with template', () => {
     expect(body.error).toBe('Template not found');
   });
 
-  test('no project is created when templateId does not exist', async ({ request }) => {
-    // Get current project count
-    const before = await request.get('/api/projects');
+  test('no bundle is created when templateId does not exist', async ({ request }) => {
+    // Get current bundle count
+    const before = await request.get('/api/bundles');
     const beforeBody = await before.json();
-    const countBefore = beforeBody.projects.length;
+    const countBefore = beforeBody.bundles.length;
 
     // Attempt to create with bad template
-    await request.post('/api/projects', {
+    await request.post('/api/bundles', {
       data: {
         title: 'Should not exist',
         anchorDate: '2026-01-01',
@@ -522,16 +522,131 @@ test.describe('Project with template', () => {
       },
     });
 
-    // Verify project count has not increased
-    const after = await request.get('/api/projects');
+    // Verify bundle count has not increased
+    const after = await request.get('/api/bundles');
     const afterBody = await after.json();
-    const countAfter = afterBody.projects.length;
+    const countAfter = afterBody.bundles.length;
     expect(countAfter).toBe(countBefore);
   });
 });
 
 // ──────────────────────────────────────────────────────────────────
-// Existing routes still work
+// Old /api/projects endpoints return 404
+// ──────────────────────────────────────────────────────────────────
+
+test.describe('Old project endpoints return 404', () => {
+  test('GET /api/projects returns 404', async ({ request }) => {
+    const res = await request.get('/api/projects');
+    expect(res.status()).toBe(404);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// Tasks filtered by bundleId
+// ──────────────────────────────────────────────────────────────────
+
+test.describe('Tasks filtered by bundleId', () => {
+  test('GET /api/tasks?bundleId returns tasks for that bundle', async ({ request }) => {
+    // Create a bundle with template tasks
+    const tmplRes = await request.post('/api/templates', {
+      data: {
+        name: 'Filter test template', type: 'test',
+        taskDefinitions: [
+          { refId: 'f1', description: 'Filter task 1', offsetDays: 0 },
+          { refId: 'f2', description: 'Filter task 2', offsetDays: 1 },
+        ],
+      },
+    });
+    const { template } = await tmplRes.json();
+
+    const createRes = await request.post('/api/bundles', {
+      data: {
+        title: 'Filter bundle',
+        anchorDate: '2026-09-01',
+        templateId: template.id,
+      },
+    });
+    const { bundle } = await createRes.json();
+
+    const res = await request.get(`/api/tasks?bundleId=${bundle.id}`);
+    expect(res.status()).toBe(200);
+
+    const body = await res.json();
+    expect(body.tasks.length).toBe(2);
+    for (const task of body.tasks) {
+      expect(task.bundleId).toBe(bundle.id);
+    }
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// Frontend navigation
+// ──────────────────────────────────────────────────────────────────
+
+test.describe('Frontend bundles page', () => {
+  test('navigating to #/bundles shows Bundles heading and New Bundle form', async ({ page }) => {
+    await page.goto('/#/bundles');
+    await page.waitForSelector('h2');
+
+    const heading = await page.textContent('h2');
+    expect(heading).toBe('Bundles');
+
+    const formHeading = await page.textContent('.form-section h3');
+    expect(formHeading).toBe('New Bundle');
+
+    // Verify the form fields are present
+    await expect(page.locator('#bundle-title')).toBeVisible();
+    await expect(page.locator('#bundle-anchor')).toBeVisible();
+    await expect(page.locator('#bundle-create-btn')).toBeVisible();
+  });
+
+  test('nav bar shows Bundles link (not Projects)', async ({ page }) => {
+    await page.goto('/');
+    // Wait for page to load
+    await page.waitForSelector('nav');
+
+    const navText = await page.textContent('nav');
+    expect(navText).toContain('Bundles');
+    expect(navText).not.toContain('Projects');
+
+    // Verify the link href
+    const bundleLink = page.locator('nav a[href="#/bundles"]');
+    await expect(bundleLink).toBeVisible();
+  });
+
+  test('empty state shows "No bundles yet" message', async ({ page, request }) => {
+    // Delete all existing bundles first
+    const listRes = await request.get('/api/bundles');
+    const { bundles } = await listRes.json();
+    for (const b of bundles) {
+      await request.delete(`/api/bundles/${b.id}`);
+    }
+
+    await page.goto('/#/bundles');
+    await page.waitForSelector('.empty-state');
+
+    const emptyText = await page.textContent('.empty-state');
+    expect(emptyText).toContain('No bundles yet. Create one to get started.');
+  });
+
+  test('creating a bundle from the frontend form works', async ({ page }) => {
+    await page.goto('/#/bundles');
+    await page.waitForSelector('#bundle-title');
+
+    await page.fill('#bundle-title', 'Test Bundle');
+    await page.fill('#bundle-anchor', '2026-07-01');
+    await page.click('#bundle-create-btn');
+
+    // Wait for the bundle card to appear
+    await page.waitForSelector('.bundle-card-title');
+
+    const titles = await page.locator('.bundle-card-title').allTextContents();
+    expect(titles).toContain('Test Bundle');
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// Existing routes
 // ──────────────────────────────────────────────────────────────────
 
 test.describe('Existing routes', () => {

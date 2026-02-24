@@ -1,60 +1,60 @@
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { getClient } from '../db/client';
 import {
-  createProject,
-  getProject,
-  updateProject,
-  deleteProject,
-  listProjects,
-} from '../db/projects';
+  createBundle,
+  getBundle,
+  updateBundle,
+  deleteBundle,
+  listBundles,
+} from '../db/bundles';
 import { getTemplate, instantiateTemplate } from '../db/templates';
-import { listTasksByProject } from '../db/tasks';
+import { listTasksByBundle } from '../db/tasks';
 import type { LambdaResponse } from '../types';
 
 const JSON_HEADERS: Record<string, string> = { 'Content-Type': 'application/json' };
 
 /**
- * Handle all /api/projects routes.
+ * Handle all /api/bundles routes.
  */
-async function handleProjectRoutes(path: string, method: string, rawBody: string | null): Promise<LambdaResponse | null> {
-  // Match /api/projects paths
-  if (!path.startsWith('/api/projects')) {
+async function handleBundleRoutes(path: string, method: string, rawBody: string | null): Promise<LambdaResponse | null> {
+  // Match /api/bundles paths
+  if (!path.startsWith('/api/bundles')) {
     return null;
   }
 
   const client = await getClient();
 
   try {
-    // Parse the path segments after /api/projects
-    const suffix = path.slice('/api/projects'.length);
+    // Parse the path segments after /api/bundles
+    const suffix = path.slice('/api/bundles'.length);
 
-    // Route: /api/projects (collection)
+    // Route: /api/bundles (collection)
     if (suffix === '' || suffix === '/') {
       return await handleCollection(method, rawBody, client);
     }
 
-    // Route: /api/projects/:id/tasks
+    // Route: /api/bundles/:id/tasks
     const tasksMatch = suffix.match(/^\/([^/]+)\/tasks\/?$/);
     if (tasksMatch) {
       const id = tasksMatch[1];
-      return await handleProjectTasks(method, id, client);
+      return await handleBundleTasks(method, id, client);
     }
 
-    // Route: /api/projects/:id
+    // Route: /api/bundles/:id
     const idMatch = suffix.match(/^\/([^/]+)\/?$/);
     if (idMatch) {
       const id = idMatch[1];
       return await handleSingle(method, id, rawBody, client);
     }
 
-    // No match within /api/projects
+    // No match within /api/bundles
     return {
       statusCode: 404,
       headers: JSON_HEADERS,
       body: JSON.stringify({ error: 'Not found' }),
     };
   } catch (err: unknown) {
-    console.error('Project route error:', err);
+    console.error('Bundle route error:', err);
     return {
       statusCode: 500,
       headers: JSON_HEADERS,
@@ -64,15 +64,15 @@ async function handleProjectRoutes(path: string, method: string, rawBody: string
 }
 
 /**
- * Handle /api/projects collection routes (GET list, POST create).
+ * Handle /api/bundles collection routes (GET list, POST create).
  */
 async function handleCollection(method: string, rawBody: string | null, client: DynamoDBDocumentClient): Promise<LambdaResponse> {
   if (method === 'GET') {
-    const projects = await listProjects(client);
+    const bundles = await listBundles(client);
     return {
       statusCode: 200,
       headers: JSON_HEADERS,
-      body: JSON.stringify({ projects }),
+      body: JSON.stringify({ bundles }),
     };
   }
 
@@ -115,7 +115,7 @@ async function handleCollection(method: string, rawBody: string | null, client: 
       };
     }
 
-    // If templateId is provided, verify template exists before creating project
+    // If templateId is provided, verify template exists before creating bundle
     if (body.templateId) {
       const template = await getTemplate(client, body.templateId as string);
       if (!template) {
@@ -127,42 +127,42 @@ async function handleCollection(method: string, rawBody: string | null, client: 
       }
     }
 
-    // Build project data
-    const projectData: Record<string, unknown> = {
+    // Build bundle data
+    const bundleData: Record<string, unknown> = {
       title: body.title,
       anchorDate: body.anchorDate,
     };
     if (body.description !== undefined) {
-      projectData.description = body.description;
+      bundleData.description = body.description;
     }
     if (body.templateId !== undefined) {
-      projectData.templateId = body.templateId;
+      bundleData.templateId = body.templateId;
     }
     if (body.links !== undefined) {
-      projectData.links = body.links;
+      bundleData.links = body.links;
     }
 
-    const project = await createProject(client, projectData);
+    const bundle = await createBundle(client, bundleData);
 
     // If templateId provided, instantiate the template
     if (body.templateId) {
       const tasks = await instantiateTemplate(
         client,
         body.templateId as string,
-        project.id,
+        bundle.id,
         body.anchorDate as string
       );
       return {
         statusCode: 201,
         headers: JSON_HEADERS,
-        body: JSON.stringify({ project, tasks }),
+        body: JSON.stringify({ bundle, tasks }),
       };
     }
 
     return {
       statusCode: 201,
       headers: JSON_HEADERS,
-      body: JSON.stringify({ project }),
+      body: JSON.stringify({ bundle }),
     };
   }
 
@@ -175,22 +175,22 @@ async function handleCollection(method: string, rawBody: string | null, client: 
 }
 
 /**
- * Handle /api/projects/:id single resource routes (GET, PUT, DELETE).
+ * Handle /api/bundles/:id single resource routes (GET, PUT, DELETE).
  */
 async function handleSingle(method: string, id: string, rawBody: string | null, client: DynamoDBDocumentClient): Promise<LambdaResponse> {
   if (method === 'GET') {
-    const project = await getProject(client, id);
-    if (!project) {
+    const bundle = await getBundle(client, id);
+    if (!bundle) {
       return {
         statusCode: 404,
         headers: JSON_HEADERS,
-        body: JSON.stringify({ error: 'Project not found' }),
+        body: JSON.stringify({ error: 'Bundle not found' }),
       };
     }
     return {
       statusCode: 200,
       headers: JSON_HEADERS,
-      body: JSON.stringify({ project }),
+      body: JSON.stringify({ bundle }),
     };
   }
 
@@ -215,13 +215,13 @@ async function handleSingle(method: string, id: string, rawBody: string | null, 
       };
     }
 
-    // Check project exists
-    const existing = await getProject(client, id);
+    // Check bundle exists
+    const existing = await getBundle(client, id);
     if (!existing) {
       return {
         statusCode: 404,
         headers: JSON_HEADERS,
-        body: JSON.stringify({ error: 'Project not found' }),
+        body: JSON.stringify({ error: 'Bundle not found' }),
       };
     }
 
@@ -242,25 +242,25 @@ async function handleSingle(method: string, id: string, rawBody: string | null, 
       };
     }
 
-    const project = await updateProject(client, id, updates);
+    const bundle = await updateBundle(client, id, updates);
     return {
       statusCode: 200,
       headers: JSON_HEADERS,
-      body: JSON.stringify({ project }),
+      body: JSON.stringify({ bundle }),
     };
   }
 
   if (method === 'DELETE') {
-    const existing = await getProject(client, id);
+    const existing = await getBundle(client, id);
     if (!existing) {
       return {
         statusCode: 404,
         headers: JSON_HEADERS,
-        body: JSON.stringify({ error: 'Project not found' }),
+        body: JSON.stringify({ error: 'Bundle not found' }),
       };
     }
 
-    await deleteProject(client, id);
+    await deleteBundle(client, id);
     return {
       statusCode: 204,
       headers: JSON_HEADERS,
@@ -277,9 +277,9 @@ async function handleSingle(method: string, id: string, rawBody: string | null, 
 }
 
 /**
- * Handle /api/projects/:id/tasks sub-route (GET only).
+ * Handle /api/bundles/:id/tasks sub-route (GET only).
  */
-async function handleProjectTasks(method: string, id: string, client: DynamoDBDocumentClient): Promise<LambdaResponse> {
+async function handleBundleTasks(method: string, id: string, client: DynamoDBDocumentClient): Promise<LambdaResponse> {
   if (method !== 'GET') {
     return {
       statusCode: 405,
@@ -288,17 +288,17 @@ async function handleProjectTasks(method: string, id: string, client: DynamoDBDo
     };
   }
 
-  // Check project exists
-  const project = await getProject(client, id);
-  if (!project) {
+  // Check bundle exists
+  const bundle = await getBundle(client, id);
+  if (!bundle) {
     return {
       statusCode: 404,
       headers: JSON_HEADERS,
-      body: JSON.stringify({ error: 'Project not found' }),
+      body: JSON.stringify({ error: 'Bundle not found' }),
     };
   }
 
-  const tasks = await listTasksByProject(client, id);
+  const tasks = await listTasksByBundle(client, id);
   return {
     statusCode: 200,
     headers: JSON_HEADERS,
@@ -306,4 +306,4 @@ async function handleProjectTasks(method: string, id: string, client: DynamoDBDo
   };
 }
 
-export { handleProjectRoutes };
+export { handleBundleRoutes };

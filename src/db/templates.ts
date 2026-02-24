@@ -126,7 +126,7 @@ async function listTemplates(client: DynamoDBDocumentClient): Promise<Template[]
  * Instantiate a template: fetch the template, and for each taskDefinition
  * create a task with a calculated date (anchorDate + offsetDays).
  */
-async function instantiateTemplate(client: DynamoDBDocumentClient, templateId: string, projectId: string, anchorDate: string): Promise<Task[]> {
+async function instantiateTemplate(client: DynamoDBDocumentClient, templateId: string, bundleId: string, anchorDate: string): Promise<Task[]> {
   const template = await getTemplate(client, templateId);
   if (!template) {
     throw new Error(`Template not found: ${templateId}`);
@@ -142,7 +142,7 @@ async function instantiateTemplate(client: DynamoDBDocumentClient, templateId: s
 
     const taskData: Record<string, unknown> = {
       description: def.description,
-      projectId,
+      bundleId,
       date: taskDate,
       source: 'template',
       templateTaskRef: def.refId,

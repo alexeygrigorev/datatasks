@@ -68,15 +68,15 @@ test_endpoint "List tasks by date" \
   '{"httpMethod":"GET","path":"/api/tasks","queryStringParameters":{"date":"2026-03-01"}}' \
   '"tasks"'
 
-# Create a project
-test_endpoint "Create project" \
-  '{"httpMethod":"POST","path":"/api/projects","body":"{\"title\":\"Test Project\",\"anchorDate\":\"2026-04-01\"}"}' \
-  '"title":"Test Project"'
+# Create a bundle
+test_endpoint "Create bundle" \
+  '{"httpMethod":"POST","path":"/api/bundles","body":"{\"title\":\"Test Bundle\",\"anchorDate\":\"2026-04-01\"}"}' \
+  '"title":"Test Bundle"'
 
-# List projects
-test_endpoint "List projects" \
-  '{"httpMethod":"GET","path":"/api/projects"}' \
-  '"projects"'
+# List bundles
+test_endpoint "List bundles" \
+  '{"httpMethod":"GET","path":"/api/bundles"}' \
+  '"bundles"'
 
 # Create a template
 test_endpoint "Create template" \

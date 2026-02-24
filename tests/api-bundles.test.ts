@@ -5,7 +5,7 @@ import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { handler } from '../src/handler';
 import { startLocal, stopLocal, getClient } from '../src/db/client';
 import { createTables, deleteTables } from '../src/db/setup';
-import { createProject } from '../src/db/projects';
+import { createBundle } from '../src/db/bundles';
 import { createTemplate } from '../src/db/templates';
 import { createTask } from '../src/db/tasks';
 import type { LambdaResponse } from '../src/types';
@@ -19,7 +19,7 @@ function invoke(method: string, path: string, body?: unknown): Promise<LambdaRes
   return handler(event, {});
 }
 
-describe('API — Projects', () => {
+describe('API — Bundles', () => {
   let client: DynamoDBDocumentClient;
 
   before(async () => {
@@ -49,11 +49,11 @@ describe('API — Projects', () => {
     });
   });
 
-  // ---- POST /api/projects ----
+  // ---- POST /api/bundles ----
 
-  describe('POST /api/projects', () => {
-    it('creates a project with valid title and anchorDate', async () => {
-      const res = await invoke('POST', '/api/projects', {
+  describe('POST /api/bundles', () => {
+    it('creates a bundle with valid title and anchorDate', async () => {
+      const res = await invoke('POST', '/api/bundles', {
         title: 'ML Zoomcamp 2026',
         anchorDate: '2026-06-01',
       });
@@ -62,17 +62,17 @@ describe('API — Projects', () => {
       assert.strictEqual(res.headers!['Content-Type'], 'application/json');
 
       const body = JSON.parse(res.body);
-      assert.ok(body.project);
-      assert.ok(body.project.id);
-      assert.strictEqual(body.project.title, 'ML Zoomcamp 2026');
-      assert.strictEqual(body.project.anchorDate, '2026-06-01');
-      assert.ok(body.project.createdAt);
-      assert.ok(body.project.updatedAt);
+      assert.ok(body.bundle);
+      assert.ok(body.bundle.id);
+      assert.strictEqual(body.bundle.title, 'ML Zoomcamp 2026');
+      assert.strictEqual(body.bundle.anchorDate, '2026-06-01');
+      assert.ok(body.bundle.createdAt);
+      assert.ok(body.bundle.updatedAt);
       assert.strictEqual(body.tasks, undefined);
     });
 
-    it('creates a project with optional description', async () => {
-      const res = await invoke('POST', '/api/projects', {
+    it('creates a bundle with optional description', async () => {
+      const res = await invoke('POST', '/api/bundles', {
         title: 'Newsletter',
         anchorDate: '2026-03-01',
         description: 'Weekly newsletter',
@@ -80,10 +80,10 @@ describe('API — Projects', () => {
 
       assert.strictEqual(res.statusCode, 201);
       const body = JSON.parse(res.body);
-      assert.strictEqual(body.project.description, 'Weekly newsletter');
+      assert.strictEqual(body.bundle.description, 'Weekly newsletter');
     });
 
-    it('creates a project with a template and instantiates tasks', async () => {
+    it('creates a bundle with a template and instantiates tasks', async () => {
       const template = await createTemplate(client, {
         name: 'Event Template',
         taskDefinitions: [
@@ -93,7 +93,7 @@ describe('API — Projects', () => {
         ],
       });
 
-      const res = await invoke('POST', '/api/projects', {
+      const res = await invoke('POST', '/api/bundles', {
         title: 'Community Meetup',
         anchorDate: '2026-04-15',
         templateId: template.id,
@@ -102,8 +102,8 @@ describe('API — Projects', () => {
       assert.strictEqual(res.statusCode, 201);
       const body = JSON.parse(res.body);
 
-      assert.ok(body.project);
-      assert.strictEqual(body.project.templateId, template.id);
+      assert.ok(body.bundle);
+      assert.strictEqual(body.bundle.templateId, template.id);
 
       assert.ok(body.tasks);
       assert.strictEqual(body.tasks.length, 3);
@@ -112,13 +112,13 @@ describe('API — Projects', () => {
       assert.deepStrictEqual(dates, ['2026-04-08', '2026-04-15', '2026-04-18']);
 
       for (const task of body.tasks) {
-        assert.strictEqual(task.projectId, body.project.id);
+        assert.strictEqual(task.bundleId, body.bundle.id);
         assert.strictEqual(task.source, 'template');
       }
     });
 
     it('returns 404 when templateId does not exist', async () => {
-      const res = await invoke('POST', '/api/projects', {
+      const res = await invoke('POST', '/api/bundles', {
         title: 'Test',
         anchorDate: '2026-01-01',
         templateId: 'nonexistent-id',
@@ -130,7 +130,7 @@ describe('API — Projects', () => {
     });
 
     it('returns 400 when title is missing', async () => {
-      const res = await invoke('POST', '/api/projects', {
+      const res = await invoke('POST', '/api/bundles', {
         anchorDate: '2026-06-01',
       });
 
@@ -140,7 +140,7 @@ describe('API — Projects', () => {
     });
 
     it('returns 400 when title is empty string', async () => {
-      const res = await invoke('POST', '/api/projects', {
+      const res = await invoke('POST', '/api/bundles', {
         title: '  ',
         anchorDate: '2026-06-01',
       });
@@ -151,7 +151,7 @@ describe('API — Projects', () => {
     });
 
     it('returns 400 when anchorDate is missing', async () => {
-      const res = await invoke('POST', '/api/projects', {
+      const res = await invoke('POST', '/api/bundles', {
         title: 'Test',
       });
 
@@ -161,7 +161,7 @@ describe('API — Projects', () => {
     });
 
     it('returns 400 for malformed JSON body', async () => {
-      const res = await invoke('POST', '/api/projects', 'not valid json{{');
+      const res = await invoke('POST', '/api/bundles', 'not valid json{{');
 
       assert.strictEqual(res.statusCode, 400);
       const body = JSON.parse(res.body);
@@ -169,163 +169,163 @@ describe('API — Projects', () => {
     });
   });
 
-  // ---- GET /api/projects ----
+  // ---- GET /api/bundles ----
 
-  describe('GET /api/projects', () => {
-    it('returns 200 with an array of projects', async () => {
-      const res = await invoke('GET', '/api/projects');
+  describe('GET /api/bundles', () => {
+    it('returns 200 with an array of bundles', async () => {
+      const res = await invoke('GET', '/api/bundles');
 
       assert.strictEqual(res.statusCode, 200);
       assert.strictEqual(res.headers!['Content-Type'], 'application/json');
 
       const body = JSON.parse(res.body);
-      assert.ok(Array.isArray(body.projects));
-      assert.ok(body.projects.length > 0);
+      assert.ok(Array.isArray(body.bundles));
+      assert.ok(body.bundles.length > 0);
     });
   });
 
-  // ---- GET /api/projects/:id ----
+  // ---- GET /api/bundles/:id ----
 
-  describe('GET /api/projects/:id', () => {
-    it('returns 200 with the project for a valid id', async () => {
-      const created = await createProject(client, {
-        title: 'My Project',
+  describe('GET /api/bundles/:id', () => {
+    it('returns 200 with the bundle for a valid id', async () => {
+      const created = await createBundle(client, {
+        title: 'My Bundle',
         anchorDate: '2026-01-01',
       });
 
-      const res = await invoke('GET', `/api/projects/${created.id}`);
+      const res = await invoke('GET', `/api/bundles/${created.id}`);
       assert.strictEqual(res.statusCode, 200);
 
       const body = JSON.parse(res.body);
-      assert.ok(body.project);
-      assert.strictEqual(body.project.id, created.id);
-      assert.strictEqual(body.project.title, 'My Project');
+      assert.ok(body.bundle);
+      assert.strictEqual(body.bundle.id, created.id);
+      assert.strictEqual(body.bundle.title, 'My Bundle');
     });
 
-    it('returns 404 for a non-existent project', async () => {
-      const res = await invoke('GET', '/api/projects/does-not-exist');
+    it('returns 404 for a non-existent bundle', async () => {
+      const res = await invoke('GET', '/api/bundles/does-not-exist');
 
       assert.strictEqual(res.statusCode, 404);
       const body = JSON.parse(res.body);
-      assert.strictEqual(body.error, 'Project not found');
+      assert.strictEqual(body.error, 'Bundle not found');
     });
   });
 
-  // ---- PUT /api/projects/:id ----
+  // ---- PUT /api/bundles/:id ----
 
-  describe('PUT /api/projects/:id', () => {
-    it('updates a project and returns 200', async () => {
-      const created = await createProject(client, {
+  describe('PUT /api/bundles/:id', () => {
+    it('updates a bundle and returns 200', async () => {
+      const created = await createBundle(client, {
         title: 'Old Title',
         anchorDate: '2026-01-01',
       });
 
       await new Promise((r) => setTimeout(r, 10));
 
-      const res = await invoke('PUT', `/api/projects/${created.id}`, {
+      const res = await invoke('PUT', `/api/bundles/${created.id}`, {
         title: 'New Title',
       });
 
       assert.strictEqual(res.statusCode, 200);
       const body = JSON.parse(res.body);
-      assert.strictEqual(body.project.title, 'New Title');
-      assert.ok(body.project.updatedAt > created.updatedAt);
+      assert.strictEqual(body.bundle.title, 'New Title');
+      assert.ok(body.bundle.updatedAt > created.updatedAt);
     });
 
-    it('returns 404 when updating a non-existent project', async () => {
-      const res = await invoke('PUT', '/api/projects/does-not-exist', {
+    it('returns 404 when updating a non-existent bundle', async () => {
+      const res = await invoke('PUT', '/api/bundles/does-not-exist', {
         title: 'New',
       });
 
       assert.strictEqual(res.statusCode, 404);
       const body = JSON.parse(res.body);
-      assert.strictEqual(body.error, 'Project not found');
+      assert.strictEqual(body.error, 'Bundle not found');
     });
 
     it('returns 400 when body is empty', async () => {
-      const created = await createProject(client, {
+      const created = await createBundle(client, {
         title: 'Test',
         anchorDate: '2026-01-01',
       });
 
-      const res = await invoke('PUT', `/api/projects/${created.id}`, {});
+      const res = await invoke('PUT', `/api/bundles/${created.id}`, {});
 
       assert.strictEqual(res.statusCode, 400);
     });
 
     it('returns 400 for malformed JSON', async () => {
-      const created = await createProject(client, {
+      const created = await createBundle(client, {
         title: 'Test',
         anchorDate: '2026-01-01',
       });
 
-      const res = await invoke('PUT', `/api/projects/${created.id}`, 'bad json');
+      const res = await invoke('PUT', `/api/bundles/${created.id}`, 'bad json');
       assert.strictEqual(res.statusCode, 400);
     });
   });
 
-  // ---- DELETE /api/projects/:id ----
+  // ---- DELETE /api/bundles/:id ----
 
-  describe('DELETE /api/projects/:id', () => {
-    it('deletes an existing project and returns 204', async () => {
-      const created = await createProject(client, {
+  describe('DELETE /api/bundles/:id', () => {
+    it('deletes an existing bundle and returns 204', async () => {
+      const created = await createBundle(client, {
         title: 'Delete me',
         anchorDate: '2026-01-01',
       });
 
-      const res = await invoke('DELETE', `/api/projects/${created.id}`);
+      const res = await invoke('DELETE', `/api/bundles/${created.id}`);
       assert.strictEqual(res.statusCode, 204);
 
-      const getRes = await invoke('GET', `/api/projects/${created.id}`);
+      const getRes = await invoke('GET', `/api/bundles/${created.id}`);
       assert.strictEqual(getRes.statusCode, 404);
     });
 
-    it('returns 404 when deleting a non-existent project', async () => {
-      const res = await invoke('DELETE', '/api/projects/does-not-exist');
+    it('returns 404 when deleting a non-existent bundle', async () => {
+      const res = await invoke('DELETE', '/api/bundles/does-not-exist');
       assert.strictEqual(res.statusCode, 404);
     });
   });
 
-  // ---- GET /api/projects/:id/tasks ----
+  // ---- GET /api/bundles/:id/tasks ----
 
-  describe('GET /api/projects/:id/tasks', () => {
-    it('returns tasks for a project', async () => {
-      const project = await createProject(client, {
-        title: 'Task List Project',
+  describe('GET /api/bundles/:id/tasks', () => {
+    it('returns tasks for a bundle', async () => {
+      const bundle = await createBundle(client, {
+        title: 'Task List Bundle',
         anchorDate: '2026-01-01',
       });
 
       await createTask(client, {
         description: 'Task 1',
-        projectId: project.id,
+        bundleId: bundle.id,
         date: '2026-01-01',
         status: 'todo',
       });
       await createTask(client, {
         description: 'Task 2',
-        projectId: project.id,
+        bundleId: bundle.id,
         date: '2026-01-02',
         status: 'todo',
       });
 
-      const res = await invoke('GET', `/api/projects/${project.id}/tasks`);
+      const res = await invoke('GET', `/api/bundles/${bundle.id}/tasks`);
       assert.strictEqual(res.statusCode, 200);
 
       const body = JSON.parse(res.body);
       assert.ok(Array.isArray(body.tasks));
       assert.strictEqual(body.tasks.length, 2);
       for (const task of body.tasks) {
-        assert.strictEqual(task.projectId, project.id);
+        assert.strictEqual(task.bundleId, bundle.id);
       }
     });
 
-    it('returns empty tasks array for project with no tasks', async () => {
-      const project = await createProject(client, {
-        title: 'No Tasks Project',
+    it('returns empty tasks array for bundle with no tasks', async () => {
+      const bundle = await createBundle(client, {
+        title: 'No Tasks Bundle',
         anchorDate: '2026-01-01',
       });
 
-      const res = await invoke('GET', `/api/projects/${project.id}/tasks`);
+      const res = await invoke('GET', `/api/bundles/${bundle.id}/tasks`);
       assert.strictEqual(res.statusCode, 200);
 
       const body = JSON.parse(res.body);
@@ -333,8 +333,17 @@ describe('API — Projects', () => {
       assert.strictEqual(body.tasks.length, 0);
     });
 
-    it('returns 404 for tasks of a non-existent project', async () => {
-      const res = await invoke('GET', '/api/projects/does-not-exist/tasks');
+    it('returns 404 for tasks of a non-existent bundle', async () => {
+      const res = await invoke('GET', '/api/bundles/does-not-exist/tasks');
+      assert.strictEqual(res.statusCode, 404);
+    });
+  });
+
+  // ---- Old /api/projects returns 404 ----
+
+  describe('Old /api/projects returns 404', () => {
+    it('GET /api/projects returns 404', async () => {
+      const res = await invoke('GET', '/api/projects');
       assert.strictEqual(res.statusCode, 404);
     });
   });
@@ -342,37 +351,37 @@ describe('API — Projects', () => {
   // ---- Method not allowed ----
 
   describe('Method not allowed', () => {
-    it('returns 405 for PATCH /api/projects', async () => {
-      const res = await invoke('PATCH', '/api/projects');
+    it('returns 405 for PATCH /api/bundles', async () => {
+      const res = await invoke('PATCH', '/api/bundles');
       assert.strictEqual(res.statusCode, 405);
       const body = JSON.parse(res.body);
       assert.strictEqual(body.error, 'Method not allowed');
     });
 
-    it('returns 405 for POST /api/projects/:id', async () => {
-      const project = await createProject(client, {
+    it('returns 405 for POST /api/bundles/:id', async () => {
+      const bundle = await createBundle(client, {
         title: 'Test',
         anchorDate: '2026-01-01',
       });
-      const res = await invoke('POST', `/api/projects/${project.id}`);
+      const res = await invoke('POST', `/api/bundles/${bundle.id}`);
       assert.strictEqual(res.statusCode, 405);
     });
 
-    it('returns 405 for PATCH /api/projects/:id', async () => {
-      const project = await createProject(client, {
+    it('returns 405 for PATCH /api/bundles/:id', async () => {
+      const bundle = await createBundle(client, {
         title: 'Test',
         anchorDate: '2026-01-01',
       });
-      const res = await invoke('PATCH', `/api/projects/${project.id}`);
+      const res = await invoke('PATCH', `/api/bundles/${bundle.id}`);
       assert.strictEqual(res.statusCode, 405);
     });
 
-    it('returns 405 for POST /api/projects/:id/tasks', async () => {
-      const project = await createProject(client, {
+    it('returns 405 for POST /api/bundles/:id/tasks', async () => {
+      const bundle = await createBundle(client, {
         title: 'Test',
         anchorDate: '2026-01-01',
       });
-      const res = await invoke('POST', `/api/projects/${project.id}/tasks`);
+      const res = await invoke('POST', `/api/bundles/${bundle.id}/tasks`);
       assert.strictEqual(res.statusCode, 405);
     });
   });
@@ -381,19 +390,19 @@ describe('API — Projects', () => {
 
   describe('Content-Type header', () => {
     it('all API responses include Content-Type: application/json', async () => {
-      const res200 = await invoke('GET', '/api/projects');
+      const res200 = await invoke('GET', '/api/bundles');
       assert.strictEqual(res200.headers!['Content-Type'], 'application/json');
 
-      const res404 = await invoke('GET', '/api/projects/nonexistent');
+      const res404 = await invoke('GET', '/api/bundles/nonexistent');
       assert.strictEqual(res404.headers!['Content-Type'], 'application/json');
 
-      const res201 = await invoke('POST', '/api/projects', {
+      const res201 = await invoke('POST', '/api/bundles', {
         title: 'CT Test',
         anchorDate: '2026-01-01',
       });
       assert.strictEqual(res201.headers!['Content-Type'], 'application/json');
 
-      const res405 = await invoke('PATCH', '/api/projects');
+      const res405 = await invoke('PATCH', '/api/bundles');
       assert.strictEqual(res405.headers!['Content-Type'], 'application/json');
     });
   });

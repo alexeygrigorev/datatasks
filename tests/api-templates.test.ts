@@ -46,8 +46,8 @@ describe('API — Templates', () => {
       assert.deepStrictEqual(body, { status: 'ok' });
     });
 
-    it('GET /api/projects returns 200', async () => {
-      const res = await invoke('GET', '/api/projects');
+    it('GET /api/bundles returns 200', async () => {
+      const res = await invoke('GET', '/api/bundles');
       assert.strictEqual(res.statusCode, 200);
     });
 

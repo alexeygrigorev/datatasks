@@ -17,7 +17,7 @@ describe('handler', () => {
     assert.ok(result.body.includes('<title>DataTasks</title>'));
     assert.ok(result.body.includes('<div id="app"></div>'));
     assert.ok(result.body.includes('href="#/tasks"'));
-    assert.ok(result.body.includes('href="#/projects"'));
+    assert.ok(result.body.includes('href="#/bundles"'));
     assert.ok(result.body.includes('href="#/templates"'));
   });
 

@@ -134,7 +134,7 @@ async function handleCollection(method: string, rawBody: string | null, client: 
       };
     }
 
-    const allowedFields = ['description', 'schedule', 'dayOfWeek', 'dayOfMonth', 'projectId', 'enabled'];
+    const allowedFields = ['description', 'schedule', 'dayOfWeek', 'dayOfMonth', 'bundleId', 'enabled'];
     const data: Record<string, unknown> = {};
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
@@ -219,7 +219,7 @@ async function handleSingle(method: string, id: string, rawBody: string | null, 
       };
     }
 
-    const allowedFields = ['description', 'schedule', 'dayOfWeek', 'dayOfMonth', 'projectId', 'enabled'];
+    const allowedFields = ['description', 'schedule', 'dayOfWeek', 'dayOfMonth', 'bundleId', 'enabled'];
     const updates: Record<string, unknown> = {};
     for (const field of allowedFields) {
       if (body[field] !== undefined) {

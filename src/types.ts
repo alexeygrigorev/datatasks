@@ -7,28 +7,28 @@ export interface Task {
   status: string;
   source?: string;
   comment?: string | null;
-  projectId?: string;
+  bundleId?: string;
   templateTaskRef?: string;
   recurringConfigId?: string;
   createdAt: string;
   updatedAt: string;
 }
 
-// --- Project ---
+// --- Bundle ---
 
-export interface ProjectLink {
+export interface BundleLink {
   name: string;
   url: string;
 }
 
-export interface Project {
+export interface Bundle {
   id: string;
   title?: string;
   name?: string;
   description?: string | null;
   anchorDate?: string;
   templateId?: string;
-  links?: ProjectLink[];
+  links?: BundleLink[];
   status?: string;
   createdAt: string;
   updatedAt: string;
@@ -61,7 +61,7 @@ export interface RecurringConfig {
   schedule: string;
   dayOfWeek?: number;
   dayOfMonth?: number;
-  projectId?: string;
+  bundleId?: string;
   enabled: boolean;
   createdAt: string;
   updatedAt: string;

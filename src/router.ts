@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 
-import { handleProjectRoutes } from './routes/projects';
+import { handleBundleRoutes } from './routes/bundles';
 import { handleTemplateRoutes } from './routes/templates';
 import { handleRecurringRoutes } from './routes/recurring';
 import { handleTelegramWebhook } from './routes/telegram';
@@ -14,7 +14,7 @@ import {
   deleteTask,
   listTasksByDate,
   listTasksByDateRange,
-  listTasksByProject,
+  listTasksByBundle,
   listTasksByStatus,
 } from './db/tasks';
 import type { LambdaEvent, LambdaResponse } from './types';
@@ -47,7 +47,7 @@ function extractTaskId(reqPath: string): string | null {
   return null;
 }
 
-const ALLOWED_UPDATE_FIELDS = ['description', 'date', 'comment', 'status', 'projectId', 'source'];
+const ALLOWED_UPDATE_FIELDS = ['description', 'date', 'comment', 'status', 'bundleId', 'source'];
 
 async function route(event: LambdaEvent, client: DynamoDBDocumentClient): Promise<LambdaResponse> {
   const method = event.httpMethod || 'GET';
@@ -122,7 +122,7 @@ async function route(event: LambdaEvent, client: DynamoDBDocumentClient): Promis
       if (body.description) taskData.description = body.description;
       if (body.date) taskData.date = body.date;
       if (body.comment !== undefined) taskData.comment = body.comment;
-      if (body.projectId !== undefined) taskData.projectId = body.projectId;
+      if (body.bundleId !== undefined) taskData.bundleId = body.bundleId;
       taskData.source = (body.source as string) || 'manual';
 
       const task = await createTask(client, taskData);
@@ -132,15 +132,15 @@ async function route(event: LambdaEvent, client: DynamoDBDocumentClient): Promis
     // GET /api/tasks — List tasks with filters
     if (method === 'GET' && reqPath === '/api/tasks') {
       const params = event.queryStringParameters || {};
-      const { date, startDate, endDate, projectId, status } = params;
+      const { date, startDate, endDate, bundleId, status } = params;
 
-      if (!date && !startDate && !endDate && !projectId && !status) {
+      if (!date && !startDate && !endDate && !bundleId && !status) {
         return jsonResponse(400, {
-          error: 'At least one filter is required: date, startDate+endDate, projectId, or status',
+          error: 'At least one filter is required: date, startDate+endDate, bundleId, or status',
         });
       }
 
-      // Priority: date > startDate+endDate > projectId > status
+      // Priority: date > startDate+endDate > bundleId > status
       if (date) {
         const tasks = await listTasksByDate(client, date);
         return jsonResponse(200, { tasks });
@@ -156,8 +156,8 @@ async function route(event: LambdaEvent, client: DynamoDBDocumentClient): Promis
         return jsonResponse(200, { tasks });
       }
 
-      if (projectId) {
-        const tasks = await listTasksByProject(client, projectId);
+      if (bundleId) {
+        const tasks = await listTasksByBundle(client, bundleId);
         return jsonResponse(200, { tasks });
       }
 
@@ -233,10 +233,10 @@ async function route(event: LambdaEvent, client: DynamoDBDocumentClient): Promis
       };
     }
 
-    // ── Project routes ─────────────────────────────────────────────
+    // ── Bundle routes ──────────────────────────────────────────────
 
-    if (reqPath.startsWith('/api/projects')) {
-      const result = await handleProjectRoutes(reqPath, method, event.body || null);
+    if (reqPath.startsWith('/api/bundles')) {
+      const result = await handleBundleRoutes(reqPath, method, event.body || null);
       if (result) return result;
     }
 
