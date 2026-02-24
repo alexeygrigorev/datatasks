@@ -7,6 +7,11 @@ export interface Task {
   status: string;
   source?: string;
   comment?: string | null;
+  instructionsUrl?: string;
+  link?: string;
+  requiredLinkName?: string;
+  assigneeId?: string;
+  tags?: string[];
   bundleId?: string;
   templateTaskRef?: string;
   recurringConfigId?: string;

@@ -302,7 +302,7 @@ describe('API — CRUD for tasks', () => {
 
       assert.strictEqual(res.statusCode, 400);
       const body = JSON.parse(res.body);
-      assert.strictEqual(body.error, "Invalid status. Must be 'todo' or 'done'");
+      assert.strictEqual(body.error, "Invalid status. Must be 'todo', 'done', or 'archived'");
     });
   });
 
@@ -606,6 +606,242 @@ describe('API — CRUD for tasks', () => {
 
       const body = JSON.parse(res.body);
       assert.strictEqual(body.comment, undefined);
+    });
+  });
+
+  // ── New fields (instructionsUrl, link, requiredLinkName, assigneeId, tags) ──
+
+  describe('POST /api/tasks with new fields', () => {
+    it('creates a task with all new fields', async () => {
+      const event = {
+        httpMethod: 'POST',
+        path: '/api/tasks',
+        body: JSON.stringify({
+          description: 'Create Luma event',
+          date: '2026-04-01',
+          instructionsUrl: 'https://docs.google.com/luma-howto',
+          link: 'https://luma.com/event-123',
+          requiredLinkName: 'Luma',
+          assigneeId: 'user-grace',
+          tags: ['webinar', 'community'],
+        }),
+      };
+      const res = await handler(event, {});
+      assert.strictEqual(res.statusCode, 201);
+
+      const body = JSON.parse(res.body);
+      assert.ok(body.id);
+      assert.strictEqual(body.description, 'Create Luma event');
+      assert.strictEqual(body.date, '2026-04-01');
+      assert.strictEqual(body.status, 'todo');
+      assert.strictEqual(body.source, 'manual');
+      assert.strictEqual(body.instructionsUrl, 'https://docs.google.com/luma-howto');
+      assert.strictEqual(body.link, 'https://luma.com/event-123');
+      assert.strictEqual(body.requiredLinkName, 'Luma');
+      assert.strictEqual(body.assigneeId, 'user-grace');
+      assert.deepStrictEqual(body.tags, ['webinar', 'community']);
+    });
+
+    it('creates a task with only required fields (backward compatibility)', async () => {
+      const event = {
+        httpMethod: 'POST',
+        path: '/api/tasks',
+        body: JSON.stringify({ description: 'Simple task', date: '2026-04-01' }),
+      };
+      const res = await handler(event, {});
+      assert.strictEqual(res.statusCode, 201);
+
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.instructionsUrl, undefined);
+      assert.strictEqual(body.link, undefined);
+      assert.strictEqual(body.requiredLinkName, undefined);
+      assert.strictEqual(body.assigneeId, undefined);
+      assert.strictEqual(body.tags, undefined);
+    });
+  });
+
+  describe('PUT /api/tasks/:id with new fields', () => {
+    it('updates a task to add new fields', async () => {
+      const createRes = await handler({
+        httpMethod: 'POST',
+        path: '/api/tasks',
+        body: JSON.stringify({ description: 'Base task', date: '2026-04-01' }),
+      }, {});
+      const created = JSON.parse(createRes.body);
+
+      const res = await handler({
+        httpMethod: 'PUT',
+        path: `/api/tasks/${created.id}`,
+        body: JSON.stringify({
+          instructionsUrl: 'https://docs.google.com/guide',
+          assigneeId: 'user-valeriia',
+          tags: ['newsletter'],
+        }),
+      }, {});
+
+      assert.strictEqual(res.statusCode, 200);
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.instructionsUrl, 'https://docs.google.com/guide');
+      assert.strictEqual(body.assigneeId, 'user-valeriia');
+      assert.deepStrictEqual(body.tags, ['newsletter']);
+      assert.strictEqual(body.description, 'Base task');
+    });
+  });
+
+  describe('requiredLinkName validation', () => {
+    it('returns 400 when marking done with requiredLinkName set but link empty', async () => {
+      const createRes = await handler({
+        httpMethod: 'POST',
+        path: '/api/tasks',
+        body: JSON.stringify({
+          description: 'Link required task',
+          date: '2026-04-01',
+          requiredLinkName: 'Luma',
+        }),
+      }, {});
+      const created = JSON.parse(createRes.body);
+
+      const res = await handler({
+        httpMethod: 'PUT',
+        path: `/api/tasks/${created.id}`,
+        body: JSON.stringify({ status: 'done' }),
+      }, {});
+
+      assert.strictEqual(res.statusCode, 400);
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.error, "Cannot mark task as done: required link 'Luma' is not filled");
+    });
+
+    it('allows done when providing link in the same request', async () => {
+      const createRes = await handler({
+        httpMethod: 'POST',
+        path: '/api/tasks',
+        body: JSON.stringify({
+          description: 'Link required task 2',
+          date: '2026-04-01',
+          requiredLinkName: 'Luma',
+        }),
+      }, {});
+      const created = JSON.parse(createRes.body);
+
+      const res = await handler({
+        httpMethod: 'PUT',
+        path: `/api/tasks/${created.id}`,
+        body: JSON.stringify({ status: 'done', link: 'https://luma.com/event' }),
+      }, {});
+
+      assert.strictEqual(res.statusCode, 200);
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.status, 'done');
+      assert.strictEqual(body.link, 'https://luma.com/event');
+    });
+
+    it('allows done when link was previously filled', async () => {
+      const createRes = await handler({
+        httpMethod: 'POST',
+        path: '/api/tasks',
+        body: JSON.stringify({
+          description: 'Link required task 3',
+          date: '2026-04-01',
+          requiredLinkName: 'Luma',
+          link: 'https://luma.com/event',
+        }),
+      }, {});
+      const created = JSON.parse(createRes.body);
+
+      const res = await handler({
+        httpMethod: 'PUT',
+        path: `/api/tasks/${created.id}`,
+        body: JSON.stringify({ status: 'done' }),
+      }, {});
+
+      assert.strictEqual(res.statusCode, 200);
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.status, 'done');
+    });
+
+    it('allows done when requiredLinkName is not set', async () => {
+      const createRes = await handler({
+        httpMethod: 'POST',
+        path: '/api/tasks',
+        body: JSON.stringify({
+          description: 'No link requirement',
+          date: '2026-04-01',
+        }),
+      }, {});
+      const created = JSON.parse(createRes.body);
+
+      const res = await handler({
+        httpMethod: 'PUT',
+        path: `/api/tasks/${created.id}`,
+        body: JSON.stringify({ status: 'done' }),
+      }, {});
+
+      assert.strictEqual(res.statusCode, 200);
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.status, 'done');
+    });
+  });
+
+  describe('Archived status filter', () => {
+    it('returns tasks filtered by archived status', async () => {
+      const createRes = await handler({
+        httpMethod: 'POST',
+        path: '/api/tasks',
+        body: JSON.stringify({ description: 'Archive me', date: '2098-01-01' }),
+      }, {});
+      const created = JSON.parse(createRes.body);
+
+      await handler({
+        httpMethod: 'PUT',
+        path: `/api/tasks/${created.id}`,
+        body: JSON.stringify({ status: 'archived' }),
+      }, {});
+
+      const res = await handler({
+        httpMethod: 'GET',
+        path: '/api/tasks',
+        queryStringParameters: { status: 'archived' },
+      }, {});
+
+      assert.strictEqual(res.statusCode, 200);
+      const body = JSON.parse(res.body);
+      assert.ok(body.tasks.length >= 1);
+      const found = body.tasks.find((t: any) => t.id === created.id);
+      assert.ok(found, 'Archived task should appear in results');
+      assert.strictEqual(found.status, 'archived');
+    });
+  });
+
+  describe('GET /api/tasks/:id with new fields', () => {
+    it('returns all new fields when retrieving a task', async () => {
+      const createRes = await handler({
+        httpMethod: 'POST',
+        path: '/api/tasks',
+        body: JSON.stringify({
+          description: 'Full fields task',
+          date: '2026-04-01',
+          instructionsUrl: 'https://docs.google.com/howto',
+          link: 'https://example.com/link',
+          requiredLinkName: 'Example',
+          assigneeId: 'user-1',
+          tags: ['tag1', 'tag2'],
+        }),
+      }, {});
+      const created = JSON.parse(createRes.body);
+
+      const res = await handler({
+        httpMethod: 'GET',
+        path: `/api/tasks/${created.id}`,
+      }, {});
+
+      assert.strictEqual(res.statusCode, 200);
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.instructionsUrl, 'https://docs.google.com/howto');
+      assert.strictEqual(body.link, 'https://example.com/link');
+      assert.strictEqual(body.requiredLinkName, 'Example');
+      assert.strictEqual(body.assigneeId, 'user-1');
+      assert.deepStrictEqual(body.tags, ['tag1', 'tag2']);
     });
   });
 

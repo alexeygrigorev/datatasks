@@ -48,7 +48,7 @@ function extractTaskId(reqPath: string): string | null {
   return null;
 }
 
-const ALLOWED_UPDATE_FIELDS = ['description', 'date', 'comment', 'status', 'bundleId', 'source'];
+const ALLOWED_UPDATE_FIELDS = ['description', 'date', 'comment', 'status', 'bundleId', 'source', 'instructionsUrl', 'link', 'requiredLinkName', 'assigneeId', 'tags'];
 
 async function route(event: LambdaEvent, client: DynamoDBDocumentClient): Promise<LambdaResponse> {
   const method = event.httpMethod || 'GET';
@@ -124,6 +124,11 @@ async function route(event: LambdaEvent, client: DynamoDBDocumentClient): Promis
       if (body.date) taskData.date = body.date;
       if (body.comment !== undefined) taskData.comment = body.comment;
       if (body.bundleId !== undefined) taskData.bundleId = body.bundleId;
+      if (body.instructionsUrl !== undefined) taskData.instructionsUrl = body.instructionsUrl;
+      if (body.link !== undefined) taskData.link = body.link;
+      if (body.requiredLinkName !== undefined) taskData.requiredLinkName = body.requiredLinkName;
+      if (body.assigneeId !== undefined) taskData.assigneeId = body.assigneeId;
+      if (body.tags !== undefined) taskData.tags = body.tags;
       taskData.source = (body.source as string) || 'manual';
 
       const task = await createTask(client, taskData);
@@ -163,9 +168,9 @@ async function route(event: LambdaEvent, client: DynamoDBDocumentClient): Promis
       }
 
       if (status) {
-        if (status !== 'todo' && status !== 'done') {
+        if (status !== 'todo' && status !== 'done' && status !== 'archived') {
           return jsonResponse(400, {
-            error: "Invalid status. Must be 'todo' or 'done'",
+            error: "Invalid status. Must be 'todo', 'done', or 'archived'",
           });
         }
         const tasks = await listTasksByStatus(client, status);
@@ -214,6 +219,15 @@ async function route(event: LambdaEvent, client: DynamoDBDocumentClient): Promis
       const existing = await getTask(client, id);
       if (!existing) {
         return jsonResponse(404, { error: 'Task not found' });
+      }
+
+      // requiredLinkName validation: cannot mark done if requiredLinkName is set but link is empty
+      if (updates.status === 'done') {
+        const effectiveRequiredLinkName = (updates.requiredLinkName !== undefined ? updates.requiredLinkName : (existing as Record<string, unknown>).requiredLinkName) as string | undefined;
+        const effectiveLink = (updates.link !== undefined ? updates.link : (existing as Record<string, unknown>).link) as string | undefined;
+        if (effectiveRequiredLinkName && !effectiveLink) {
+          return jsonResponse(400, { error: `Cannot mark task as done: required link '${effectiveRequiredLinkName}' is not filled` });
+        }
       }
 
       const updated = await updateTask(client, id, updates);

@@ -137,6 +137,70 @@ describe('Tasks data layer', () => {
     assert.deepStrictEqual(descriptions, ['P1', 'P2']);
   });
 
+  it('createTask persists new fields (instructionsUrl, link, requiredLinkName, assigneeId, tags)', async () => {
+    const task = await createTask(client, {
+      description: 'Task with new fields',
+      date: '2026-04-01',
+      instructionsUrl: 'https://docs.google.com/howto',
+      link: 'https://luma.com/event-123',
+      requiredLinkName: 'Luma',
+      assigneeId: 'user-grace',
+      tags: ['webinar', 'community'],
+    });
+
+    assert.strictEqual(task.description, 'Task with new fields');
+    assert.strictEqual((task as any).instructionsUrl, 'https://docs.google.com/howto');
+    assert.strictEqual((task as any).link, 'https://luma.com/event-123');
+    assert.strictEqual((task as any).requiredLinkName, 'Luma');
+    assert.strictEqual((task as any).assigneeId, 'user-grace');
+    assert.deepStrictEqual((task as any).tags, ['webinar', 'community']);
+
+    // Verify retrieval
+    const fetched = await getTask(client, task.id);
+    assert.ok(fetched);
+    assert.strictEqual((fetched as any).instructionsUrl, 'https://docs.google.com/howto');
+    assert.strictEqual((fetched as any).link, 'https://luma.com/event-123');
+    assert.strictEqual((fetched as any).requiredLinkName, 'Luma');
+    assert.strictEqual((fetched as any).assigneeId, 'user-grace');
+    assert.deepStrictEqual((fetched as any).tags, ['webinar', 'community']);
+  });
+
+  it('updateTask can update new fields', async () => {
+    const task = await createTask(client, {
+      description: 'Update new fields',
+      date: '2026-04-02',
+    });
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    const updated = await updateTask(client, task.id, {
+      instructionsUrl: 'https://docs.google.com/updated',
+      assigneeId: 'user-valeriia',
+      tags: ['newsletter'],
+      link: 'https://example.com/link',
+    });
+
+    assert.ok(updated);
+    assert.strictEqual((updated as any).instructionsUrl, 'https://docs.google.com/updated');
+    assert.strictEqual((updated as any).assigneeId, 'user-valeriia');
+    assert.deepStrictEqual((updated as any).tags, ['newsletter']);
+    assert.strictEqual((updated as any).link, 'https://example.com/link');
+    assert.strictEqual(updated!.description, 'Update new fields');
+  });
+
+  it('createTask without new fields leaves them absent (backward compatibility)', async () => {
+    const task = await createTask(client, {
+      description: 'Old-style task',
+      date: '2026-04-03',
+    });
+
+    assert.strictEqual((task as any).instructionsUrl, undefined);
+    assert.strictEqual((task as any).link, undefined);
+    assert.strictEqual((task as any).requiredLinkName, undefined);
+    assert.strictEqual((task as any).assigneeId, undefined);
+    assert.strictEqual((task as any).tags, undefined);
+  });
+
   it('listTasksByStatus returns tasks with a given status', async () => {
     const uniqueStatus = 'status-' + crypto.randomUUID();
     await createTask(client, { description: 'S1', date: '2026-04-01', status: uniqueStatus });
