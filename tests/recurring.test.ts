@@ -12,6 +12,8 @@ import {
   listRecurringConfigs,
   listEnabledRecurringConfigs,
   generateRecurringTasks,
+  cronMatchesDate,
+  matchCronField,
 } from '../src/db/recurring';
 import { getTask } from '../src/db/tasks';
 
@@ -29,54 +31,116 @@ describe('Recurring configs data layer', () => {
     await stopLocal();
   });
 
+  // ── Cron matching unit tests ─────────────────────────────────────
+
+  describe('matchCronField', () => {
+    it('matches wildcard * for any value', () => {
+      assert.strictEqual(matchCronField('*', 0), true);
+      assert.strictEqual(matchCronField('*', 15), true);
+      assert.strictEqual(matchCronField('*', 31), true);
+    });
+
+    it('matches a specific number', () => {
+      assert.strictEqual(matchCronField('3', 3), true);
+      assert.strictEqual(matchCronField('3', 4), false);
+      assert.strictEqual(matchCronField('15', 15), true);
+    });
+
+    it('matches comma-separated values', () => {
+      assert.strictEqual(matchCronField('1,3,5', 1), true);
+      assert.strictEqual(matchCronField('1,3,5', 3), true);
+      assert.strictEqual(matchCronField('1,3,5', 5), true);
+      assert.strictEqual(matchCronField('1,3,5', 2), false);
+    });
+
+    it('matches step values (*/N)', () => {
+      assert.strictEqual(matchCronField('*/2', 0), true);
+      assert.strictEqual(matchCronField('*/2', 2), true);
+      assert.strictEqual(matchCronField('*/2', 4), true);
+      assert.strictEqual(matchCronField('*/2', 1), false);
+      assert.strictEqual(matchCronField('*/2', 3), false);
+    });
+  });
+
+  describe('cronMatchesDate', () => {
+    it('matches daily cron: * * * * * (every day)', () => {
+      const d = new Date('2028-01-15T00:00:00Z');
+      assert.strictEqual(cronMatchesDate('0 9 * * *', d), true);
+    });
+
+    it('matches weekly cron: 0 9 * * 3 (Wednesdays)', () => {
+      // 2028-02-02 is a Wednesday
+      const wed = new Date('2028-02-02T00:00:00Z');
+      assert.strictEqual(cronMatchesDate('0 9 * * 3', wed), true);
+
+      // 2028-02-01 is a Tuesday
+      const tue = new Date('2028-02-01T00:00:00Z');
+      assert.strictEqual(cronMatchesDate('0 9 * * 3', tue), false);
+    });
+
+    it('matches monthly cron: 0 9 15 * * (15th of every month)', () => {
+      const d15 = new Date('2028-06-15T00:00:00Z');
+      assert.strictEqual(cronMatchesDate('0 9 15 * *', d15), true);
+
+      const d14 = new Date('2028-06-14T00:00:00Z');
+      assert.strictEqual(cronMatchesDate('0 9 15 * *', d14), false);
+    });
+
+    it('matches specific month and day: 0 9 25 12 * (Dec 25th)', () => {
+      const xmas = new Date('2028-12-25T00:00:00Z');
+      assert.strictEqual(cronMatchesDate('0 9 25 12 *', xmas), true);
+
+      const notXmas = new Date('2028-11-25T00:00:00Z');
+      assert.strictEqual(cronMatchesDate('0 9 25 12 *', notXmas), false);
+    });
+
+    it('rejects expressions with wrong number of fields', () => {
+      const d = new Date('2028-01-15T00:00:00Z');
+      assert.strictEqual(cronMatchesDate('0 9 * *', d), false);
+      assert.strictEqual(cronMatchesDate('0 9 * * * *', d), false);
+    });
+  });
+
+  // ── CRUD tests ──────────────────────────────────────────────────
+
   it('createRecurringConfig returns a config with id, createdAt, updatedAt, enabled', async () => {
     const config = await createRecurringConfig(client, {
       description: 'Daily standup',
-      schedule: 'daily',
+      cronExpression: '0 9 * * *',
     });
 
     assert.ok(config.id);
     assert.ok(config.createdAt);
     assert.ok(config.updatedAt);
     assert.strictEqual(config.description, 'Daily standup');
-    assert.strictEqual(config.schedule, 'daily');
+    assert.strictEqual(config.cronExpression, '0 9 * * *');
     assert.strictEqual(config.enabled, true);
     assert.strictEqual((config as Record<string, unknown>).PK, undefined);
     assert.strictEqual((config as Record<string, unknown>).SK, undefined);
   });
 
-  it('createRecurringConfig with weekly schedule and dayOfWeek', async () => {
+  it('createRecurringConfig with assigneeId', async () => {
     const config = await createRecurringConfig(client, {
       description: 'Weekly mailchimp dump',
-      schedule: 'weekly',
-      dayOfWeek: 3,
+      cronExpression: '0 10 * * 3',
+      assigneeId: 'user-grace',
     });
 
-    assert.strictEqual(config.schedule, 'weekly');
-    assert.strictEqual(config.dayOfWeek, 3);
-  });
-
-  it('createRecurringConfig with monthly schedule and dayOfMonth', async () => {
-    const config = await createRecurringConfig(client, {
-      description: 'Monthly report',
-      schedule: 'monthly',
-      dayOfMonth: 15,
-    });
-
-    assert.strictEqual(config.schedule, 'monthly');
-    assert.strictEqual(config.dayOfMonth, 15);
+    assert.strictEqual(config.cronExpression, '0 10 * * 3');
+    assert.strictEqual(config.assigneeId, 'user-grace');
   });
 
   it('getRecurringConfig returns the config by id', async () => {
     const created = await createRecurringConfig(client, {
       description: 'Fetch test',
-      schedule: 'daily',
+      cronExpression: '0 9 * * *',
     });
     const fetched = await getRecurringConfig(client, created.id);
 
     assert.ok(fetched);
     assert.strictEqual(fetched.id, created.id);
     assert.strictEqual(fetched.description, 'Fetch test');
+    assert.strictEqual(fetched.cronExpression, '0 9 * * *');
   });
 
   it('getRecurringConfig returns null for non-existent id', async () => {
@@ -87,7 +151,7 @@ describe('Recurring configs data layer', () => {
   it('updateRecurringConfig performs partial update and refreshes updatedAt', async () => {
     const created = await createRecurringConfig(client, {
       description: 'Original',
-      schedule: 'daily',
+      cronExpression: '0 9 * * *',
     });
 
     await new Promise((r) => setTimeout(r, 10));
@@ -97,16 +161,42 @@ describe('Recurring configs data layer', () => {
       enabled: false,
     });
 
-    assert.strictEqual(updated.description, 'Updated');
-    assert.strictEqual(updated.enabled, false);
-    assert.strictEqual(updated.schedule, 'daily');
-    assert.ok(updated.updatedAt > created.updatedAt);
+    assert.strictEqual(updated!.description, 'Updated');
+    assert.strictEqual(updated!.enabled, false);
+    assert.strictEqual(updated!.cronExpression, '0 9 * * *');
+    assert.ok(updated!.updatedAt > created.updatedAt);
+  });
+
+  it('updateRecurringConfig updates cronExpression', async () => {
+    const created = await createRecurringConfig(client, {
+      description: 'Cron update test',
+      cronExpression: '0 9 * * 3',
+    });
+
+    const updated = await updateRecurringConfig(client, created.id, {
+      cronExpression: '0 9 * * 1',
+    });
+
+    assert.strictEqual(updated!.cronExpression, '0 9 * * 1');
+  });
+
+  it('updateRecurringConfig updates assigneeId', async () => {
+    const created = await createRecurringConfig(client, {
+      description: 'Assignee update test',
+      cronExpression: '0 9 * * *',
+    });
+
+    const updated = await updateRecurringConfig(client, created.id, {
+      assigneeId: 'user-valeriia',
+    });
+
+    assert.strictEqual(updated!.assigneeId, 'user-valeriia');
   });
 
   it('deleteRecurringConfig removes the config', async () => {
     const created = await createRecurringConfig(client, {
       description: 'Delete me',
-      schedule: 'daily',
+      cronExpression: '0 9 * * *',
     });
     await deleteRecurringConfig(client, created.id);
     const result = await getRecurringConfig(client, created.id);
@@ -116,12 +206,11 @@ describe('Recurring configs data layer', () => {
   it('listRecurringConfigs returns all configs', async () => {
     const c1 = await createRecurringConfig(client, {
       description: 'List 1',
-      schedule: 'daily',
+      cronExpression: '0 9 * * *',
     });
     const c2 = await createRecurringConfig(client, {
       description: 'List 2',
-      schedule: 'weekly',
-      dayOfWeek: 1,
+      cronExpression: '0 9 * * 1',
     });
 
     const configs = await listRecurringConfigs(client);
@@ -135,11 +224,11 @@ describe('Recurring configs data layer', () => {
   it('listEnabledRecurringConfigs returns only enabled configs', async () => {
     const enabled = await createRecurringConfig(client, {
       description: 'Enabled config',
-      schedule: 'daily',
+      cronExpression: '0 9 * * *',
     });
     const disabled = await createRecurringConfig(client, {
       description: 'Disabled config',
-      schedule: 'daily',
+      cronExpression: '0 9 * * *',
       enabled: false,
     });
 
@@ -152,17 +241,21 @@ describe('Recurring configs data layer', () => {
 
   // ── Generation tests ────────────────────────────────────────────
 
-  it('generateRecurringTasks creates daily tasks for each day in range', async () => {
+  async function disableAllConfigs(): Promise<void> {
     const allConfigs = await listRecurringConfigs(client);
     for (const c of allConfigs) {
       if (c.enabled) {
         await updateRecurringConfig(client, c.id, { enabled: false });
       }
     }
+  }
+
+  it('generateRecurringTasks creates daily tasks for each day in range (cron: 0 9 * * *)', async () => {
+    await disableAllConfigs();
 
     const config = await createRecurringConfig(client, {
       description: 'Gen daily standup',
-      schedule: 'daily',
+      cronExpression: '0 9 * * *',
     });
 
     const result = await generateRecurringTasks(client, '2027-01-02', '2027-01-04');
@@ -188,20 +281,15 @@ describe('Recurring configs data layer', () => {
     await updateRecurringConfig(client, config.id, { enabled: false });
   });
 
-  it('generateRecurringTasks creates weekly tasks only on matching dayOfWeek', async () => {
-    const allConfigs = await listRecurringConfigs(client);
-    for (const c of allConfigs) {
-      if (c.enabled) {
-        await updateRecurringConfig(client, c.id, { enabled: false });
-      }
-    }
+  it('generateRecurringTasks creates weekly tasks only on matching day-of-week (cron: 0 9 * * 3)', async () => {
+    await disableAllConfigs();
 
     const config = await createRecurringConfig(client, {
       description: 'Gen weekly mailchimp',
-      schedule: 'weekly',
-      dayOfWeek: 3,
+      cronExpression: '0 9 * * 3',
     });
 
+    // 2027-02-01 is a Monday. Wednesdays are 2027-02-03 and 2027-02-10
     const result = await generateRecurringTasks(client, '2027-02-01', '2027-02-14');
 
     assert.strictEqual(result.generated.length, 2);
@@ -211,18 +299,12 @@ describe('Recurring configs data layer', () => {
     await updateRecurringConfig(client, config.id, { enabled: false });
   });
 
-  it('generateRecurringTasks creates monthly tasks only on matching dayOfMonth', async () => {
-    const allConfigs = await listRecurringConfigs(client);
-    for (const c of allConfigs) {
-      if (c.enabled) {
-        await updateRecurringConfig(client, c.id, { enabled: false });
-      }
-    }
+  it('generateRecurringTasks creates monthly tasks only on matching day-of-month (cron: 0 9 15 * *)', async () => {
+    await disableAllConfigs();
 
     const config = await createRecurringConfig(client, {
       description: 'Gen monthly report',
-      schedule: 'monthly',
-      dayOfMonth: 15,
+      cronExpression: '0 9 15 * *',
     });
 
     const result = await generateRecurringTasks(client, '2027-06-01', '2027-08-31');
@@ -234,17 +316,12 @@ describe('Recurring configs data layer', () => {
     await updateRecurringConfig(client, config.id, { enabled: false });
   });
 
-  it('generateRecurringTasks is idempotent — no duplicates on second call', async () => {
-    const allConfigs = await listRecurringConfigs(client);
-    for (const c of allConfigs) {
-      if (c.enabled) {
-        await updateRecurringConfig(client, c.id, { enabled: false });
-      }
-    }
+  it('generateRecurringTasks is idempotent -- no duplicates on second call', async () => {
+    await disableAllConfigs();
 
     const config = await createRecurringConfig(client, {
       description: 'Gen idempotent daily',
-      schedule: 'daily',
+      cronExpression: '0 9 * * *',
     });
 
     const result1 = await generateRecurringTasks(client, '2027-03-02', '2027-03-04');
@@ -259,16 +336,11 @@ describe('Recurring configs data layer', () => {
   });
 
   it('generateRecurringTasks skips disabled configs', async () => {
-    const allConfigs = await listRecurringConfigs(client);
-    for (const c of allConfigs) {
-      if (c.enabled) {
-        await updateRecurringConfig(client, c.id, { enabled: false });
-      }
-    }
+    await disableAllConfigs();
 
     await createRecurringConfig(client, {
       description: 'Gen disabled daily',
-      schedule: 'daily',
+      cronExpression: '0 9 * * *',
       enabled: false,
     });
 
@@ -277,23 +349,33 @@ describe('Recurring configs data layer', () => {
     assert.strictEqual(result.skipped, 0);
   });
 
-  it('generateRecurringTasks sets bundleId from config', async () => {
-    const allConfigs = await listRecurringConfigs(client);
-    for (const c of allConfigs) {
-      if (c.enabled) {
-        await updateRecurringConfig(client, c.id, { enabled: false });
-      }
-    }
+  it('generateRecurringTasks sets assigneeId from config', async () => {
+    await disableAllConfigs();
 
     const config = await createRecurringConfig(client, {
-      description: 'Gen bundle task',
-      schedule: 'daily',
-      bundleId: 'bundle-gen-123',
+      description: 'Gen assignee task',
+      cronExpression: '0 9 * * *',
+      assigneeId: 'user-grace',
     });
 
     const result = await generateRecurringTasks(client, '2027-05-02', '2027-05-02');
     assert.strictEqual(result.generated.length, 1);
-    assert.strictEqual(result.generated[0].bundleId, 'bundle-gen-123');
+    assert.strictEqual((result.generated[0] as Record<string, unknown>).assigneeId, 'user-grace');
+
+    await updateRecurringConfig(client, config.id, { enabled: false });
+  });
+
+  it('generateRecurringTasks does not set assigneeId when not in config', async () => {
+    await disableAllConfigs();
+
+    const config = await createRecurringConfig(client, {
+      description: 'Gen no assignee task',
+      cronExpression: '0 9 * * *',
+    });
+
+    const result = await generateRecurringTasks(client, '2027-05-10', '2027-05-10');
+    assert.strictEqual(result.generated.length, 1);
+    assert.strictEqual((result.generated[0] as Record<string, unknown>).assigneeId, undefined);
 
     await updateRecurringConfig(client, config.id, { enabled: false });
   });
