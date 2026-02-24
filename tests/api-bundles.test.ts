@@ -66,6 +66,8 @@ describe('API — Bundles', () => {
       assert.ok(body.bundle.id);
       assert.strictEqual(body.bundle.title, 'ML Zoomcamp 2026');
       assert.strictEqual(body.bundle.anchorDate, '2026-06-01');
+      assert.strictEqual(body.bundle.stage, 'preparation');
+      assert.strictEqual(body.bundle.status, 'active');
       assert.ok(body.bundle.createdAt);
       assert.ok(body.bundle.updatedAt);
       assert.strictEqual(body.tasks, undefined);
@@ -81,6 +83,42 @@ describe('API — Bundles', () => {
       assert.strictEqual(res.statusCode, 201);
       const body = JSON.parse(res.body);
       assert.strictEqual(body.bundle.description, 'Weekly newsletter');
+    });
+
+    it('creates a bundle with all new fields', async () => {
+      const res = await invoke('POST', '/api/bundles', {
+        title: 'Newsletter Mar 2026',
+        anchorDate: '2026-03-15',
+        emoji: '📰',
+        tags: ['newsletter'],
+        references: [{ name: 'Style guide', url: 'https://docs.google.com/style' }],
+        bundleLinks: [{ name: 'Luma', url: '' }],
+      });
+
+      assert.strictEqual(res.statusCode, 201);
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.bundle.emoji, '📰');
+      assert.deepStrictEqual(body.bundle.tags, ['newsletter']);
+      assert.deepStrictEqual(body.bundle.references, [{ name: 'Style guide', url: 'https://docs.google.com/style' }]);
+      assert.deepStrictEqual(body.bundle.bundleLinks, [{ name: 'Luma', url: '' }]);
+      assert.strictEqual(body.bundle.stage, 'preparation');
+      assert.strictEqual(body.bundle.status, 'active');
+    });
+
+    it('creates a bundle with only required fields (backward compatibility)', async () => {
+      const res = await invoke('POST', '/api/bundles', {
+        title: 'Simple Bundle',
+        anchorDate: '2026-04-01',
+      });
+
+      assert.strictEqual(res.statusCode, 201);
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.bundle.stage, 'preparation');
+      assert.strictEqual(body.bundle.status, 'active');
+      assert.strictEqual(body.bundle.emoji, undefined);
+      assert.strictEqual(body.bundle.tags, undefined);
+      assert.strictEqual(body.bundle.references, undefined);
+      assert.strictEqual(body.bundle.bundleLinks, undefined);
     });
 
     it('creates a bundle with a template and instantiates tasks', async () => {
@@ -209,6 +247,44 @@ describe('API — Bundles', () => {
       const body = JSON.parse(res.body);
       assert.strictEqual(body.error, 'Bundle not found');
     });
+
+    it('returns bundle with all new fields via GET', async () => {
+      const created = await createBundle(client, {
+        title: 'Full Bundle',
+        anchorDate: '2026-07-01',
+        emoji: '🎙️',
+        tags: ['podcast'],
+        references: [{ name: 'Overview', url: 'https://example.com/overview' }],
+        bundleLinks: [{ name: 'YouTube', url: 'https://youtube.com/123' }],
+        stage: 'announced',
+        status: 'active',
+      });
+
+      const res = await invoke('GET', `/api/bundles/${created.id}`);
+      assert.strictEqual(res.statusCode, 200);
+
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.bundle.emoji, '🎙️');
+      assert.deepStrictEqual(body.bundle.tags, ['podcast']);
+      assert.deepStrictEqual(body.bundle.references, [{ name: 'Overview', url: 'https://example.com/overview' }]);
+      assert.deepStrictEqual(body.bundle.bundleLinks, [{ name: 'YouTube', url: 'https://youtube.com/123' }]);
+      assert.strictEqual(body.bundle.stage, 'announced');
+      assert.strictEqual(body.bundle.status, 'active');
+    });
+
+    it('existing bundle without new fields still works', async () => {
+      const created = await createBundle(client, {
+        title: 'Old style bundle',
+        anchorDate: '2026-01-01',
+      });
+
+      const res = await invoke('GET', `/api/bundles/${created.id}`);
+      assert.strictEqual(res.statusCode, 200);
+
+      const body = JSON.parse(res.body);
+      assert.ok(body.bundle);
+      assert.strictEqual(body.bundle.title, 'Old style bundle');
+    });
   });
 
   // ---- PUT /api/bundles/:id ----
@@ -230,6 +306,86 @@ describe('API — Bundles', () => {
       const body = JSON.parse(res.body);
       assert.strictEqual(body.bundle.title, 'New Title');
       assert.ok(body.bundle.updatedAt > created.updatedAt);
+    });
+
+    it('updates stage to announced', async () => {
+      const created = await createBundle(client, {
+        title: 'Stage test',
+        anchorDate: '2026-01-01',
+        stage: 'preparation',
+      });
+
+      const res = await invoke('PUT', `/api/bundles/${created.id}`, {
+        stage: 'announced',
+      });
+
+      assert.strictEqual(res.statusCode, 200);
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.bundle.stage, 'announced');
+    });
+
+    it('rejects invalid stage value', async () => {
+      const created = await createBundle(client, {
+        title: 'Invalid stage test',
+        anchorDate: '2026-01-01',
+      });
+
+      const res = await invoke('PUT', `/api/bundles/${created.id}`, {
+        stage: 'invalid-stage',
+      });
+
+      assert.strictEqual(res.statusCode, 400);
+      const body = JSON.parse(res.body);
+      assert.ok(body.error.includes('Invalid stage'));
+    });
+
+    it('rejects invalid status value', async () => {
+      const created = await createBundle(client, {
+        title: 'Invalid status test',
+        anchorDate: '2026-01-01',
+      });
+
+      const res = await invoke('PUT', `/api/bundles/${created.id}`, {
+        status: 'invalid-status',
+      });
+
+      assert.strictEqual(res.statusCode, 400);
+      const body = JSON.parse(res.body);
+      assert.ok(body.error.includes('Invalid status'));
+    });
+
+    it('updates references and bundleLinks', async () => {
+      const created = await createBundle(client, {
+        title: 'Links update test',
+        anchorDate: '2026-01-01',
+      });
+
+      const res = await invoke('PUT', `/api/bundles/${created.id}`, {
+        references: [{ name: 'Process doc', url: 'https://docs.google.com/proc' }],
+        bundleLinks: [{ name: 'YouTube', url: 'https://youtube.com/watch?v=123' }],
+      });
+
+      assert.strictEqual(res.statusCode, 200);
+      const body = JSON.parse(res.body);
+      assert.deepStrictEqual(body.bundle.references, [{ name: 'Process doc', url: 'https://docs.google.com/proc' }]);
+      assert.deepStrictEqual(body.bundle.bundleLinks, [{ name: 'YouTube', url: 'https://youtube.com/watch?v=123' }]);
+    });
+
+    it('updates emoji and tags', async () => {
+      const created = await createBundle(client, {
+        title: 'Emoji tags update',
+        anchorDate: '2026-01-01',
+      });
+
+      const res = await invoke('PUT', `/api/bundles/${created.id}`, {
+        emoji: '📰',
+        tags: ['newsletter', 'weekly'],
+      });
+
+      assert.strictEqual(res.statusCode, 200);
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.bundle.emoji, '📰');
+      assert.deepStrictEqual(body.bundle.tags, ['newsletter', 'weekly']);
     });
 
     it('returns 404 when updating a non-existent bundle', async () => {
@@ -264,13 +420,48 @@ describe('API — Bundles', () => {
     });
   });
 
+  // ---- PUT /api/bundles/:id/archive ----
+
+  describe('PUT /api/bundles/:id/archive', () => {
+    it('archives a bundle and returns 200', async () => {
+      const created = await createBundle(client, {
+        title: 'Archive me',
+        anchorDate: '2026-01-01',
+        status: 'active',
+      });
+
+      const res = await invoke('PUT', `/api/bundles/${created.id}/archive`);
+      assert.strictEqual(res.statusCode, 200);
+
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.bundle.status, 'archived');
+      assert.strictEqual(body.bundle.id, created.id);
+    });
+
+    it('returns 404 for a non-existent bundle', async () => {
+      const res = await invoke('PUT', '/api/bundles/does-not-exist/archive');
+      assert.strictEqual(res.statusCode, 404);
+    });
+
+    it('returns 405 for non-PUT methods', async () => {
+      const created = await createBundle(client, {
+        title: 'Method test',
+        anchorDate: '2026-01-01',
+      });
+
+      const res = await invoke('GET', `/api/bundles/${created.id}/archive`);
+      assert.strictEqual(res.statusCode, 405);
+    });
+  });
+
   // ---- DELETE /api/bundles/:id ----
 
   describe('DELETE /api/bundles/:id', () => {
-    it('deletes an existing bundle and returns 204', async () => {
+    it('deletes an archived bundle and returns 204', async () => {
       const created = await createBundle(client, {
         title: 'Delete me',
         anchorDate: '2026-01-01',
+        status: 'archived',
       });
 
       const res = await invoke('DELETE', `/api/bundles/${created.id}`);
@@ -278,6 +469,33 @@ describe('API — Bundles', () => {
 
       const getRes = await invoke('GET', `/api/bundles/${created.id}`);
       assert.strictEqual(getRes.statusCode, 404);
+    });
+
+    it('returns 400 when deleting a non-archived bundle', async () => {
+      const created = await createBundle(client, {
+        title: 'Active bundle',
+        anchorDate: '2026-01-01',
+        status: 'active',
+      });
+
+      const res = await invoke('DELETE', `/api/bundles/${created.id}`);
+      assert.strictEqual(res.statusCode, 400);
+
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.error, 'Only archived bundles can be deleted');
+    });
+
+    it('returns 400 when deleting a bundle without status set', async () => {
+      const created = await createBundle(client, {
+        title: 'No status bundle',
+        anchorDate: '2026-01-01',
+      });
+
+      const res = await invoke('DELETE', `/api/bundles/${created.id}`);
+      assert.strictEqual(res.statusCode, 400);
+
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.error, 'Only archived bundles can be deleted');
     });
 
     it('returns 404 when deleting a non-existent bundle', async () => {
