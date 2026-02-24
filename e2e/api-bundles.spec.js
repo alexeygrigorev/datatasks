@@ -6,9 +6,15 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // Helper: ISO-8601 timestamp pattern
 const ISO_TS_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/;
 
+// Helper: archive and delete a bundle
+async function archiveAndDelete(request, bundleId) {
+  await request.put(`/api/bundles/${bundleId}/archive`);
+  await request.delete(`/api/bundles/${bundleId}`);
+}
+
 test.describe('Bundle CRUD API', () => {
   // ──────────────────────────────────────────────────────────────────
-  // POST /api/bundles — Create
+  // POST /api/bundles -- Create
   // ──────────────────────────────────────────────────────────────────
 
   test.describe('POST /api/bundles', () => {
@@ -99,7 +105,7 @@ test.describe('Bundle CRUD API', () => {
   });
 
   // ──────────────────────────────────────────────────────────────────
-  // GET /api/bundles — List all
+  // GET /api/bundles -- List all
   // ──────────────────────────────────────────────────────────────────
 
   test.describe('GET /api/bundles', () => {
@@ -141,7 +147,7 @@ test.describe('Bundle CRUD API', () => {
   });
 
   // ──────────────────────────────────────────────────────────────────
-  // GET /api/bundles/:id — Single bundle
+  // GET /api/bundles/:id -- Single bundle
   // ──────────────────────────────────────────────────────────────────
 
   test.describe('GET /api/bundles/:id', () => {
@@ -171,7 +177,7 @@ test.describe('Bundle CRUD API', () => {
   });
 
   // ──────────────────────────────────────────────────────────────────
-  // PUT /api/bundles/:id — Update
+  // PUT /api/bundles/:id -- Update
   // ──────────────────────────────────────────────────────────────────
 
   test.describe('PUT /api/bundles/:id', () => {
@@ -262,15 +268,18 @@ test.describe('Bundle CRUD API', () => {
   });
 
   // ──────────────────────────────────────────────────────────────────
-  // DELETE /api/bundles/:id — Delete
+  // DELETE /api/bundles/:id -- Delete
   // ──────────────────────────────────────────────────────────────────
 
   test.describe('DELETE /api/bundles/:id', () => {
-    test('deletes an existing bundle and returns 204', async ({ request }) => {
+    test('deletes an archived bundle and returns 204', async ({ request }) => {
       const create = await request.post('/api/bundles', {
         data: { title: 'Delete me', anchorDate: '2026-07-01' },
       });
       const { bundle } = await create.json();
+
+      // Archive first
+      await request.put(`/api/bundles/${bundle.id}/archive`);
 
       const del = await request.delete(`/api/bundles/${bundle.id}`);
       expect(del.status()).toBe(204);
@@ -286,10 +295,25 @@ test.describe('Bundle CRUD API', () => {
       });
       const { bundle } = await create.json();
 
+      // Archive first, then delete
+      await request.put(`/api/bundles/${bundle.id}/archive`);
       await request.delete(`/api/bundles/${bundle.id}`);
 
       const get = await request.get(`/api/bundles/${bundle.id}`);
       expect(get.status()).toBe(404);
+    });
+
+    test('returns 400 when deleting a non-archived bundle', async ({ request }) => {
+      const create = await request.post('/api/bundles', {
+        data: { title: 'Active bundle', anchorDate: '2026-07-01' },
+      });
+      const { bundle } = await create.json();
+
+      const del = await request.delete(`/api/bundles/${bundle.id}`);
+      expect(del.status()).toBe(400);
+
+      const body = await del.json();
+      expect(body.error).toBe('Only archived bundles can be deleted');
     });
 
     test('returns 404 for a non-existent bundle', async ({ request }) => {
@@ -302,7 +326,7 @@ test.describe('Bundle CRUD API', () => {
   });
 
   // ──────────────────────────────────────────────────────────────────
-  // GET /api/bundles/:id/tasks — Bundle tasks
+  // GET /api/bundles/:id/tasks -- Bundle tasks
   // ──────────────────────────────────────────────────────────────────
 
   test.describe('GET /api/bundles/:id/tasks', () => {
@@ -615,10 +639,11 @@ test.describe('Frontend bundles page', () => {
   });
 
   test('empty state shows "No bundles yet" message', async ({ page, request }) => {
-    // Delete all existing bundles first
+    // Delete all existing bundles first (archive then delete)
     const listRes = await request.get('/api/bundles');
     const { bundles } = await listRes.json();
     for (const b of bundles) {
+      await request.put(`/api/bundles/${b.id}/archive`);
       await request.delete(`/api/bundles/${b.id}`);
     }
 
@@ -662,5 +687,255 @@ test.describe('Existing routes', () => {
     const res = await request.get('/');
     expect(res.status()).toBe(200);
     expect(res.headers()['content-type']).toContain('text/html');
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+// Bundle data model: new fields, stage, archive, delete guard
+// (Tests for issue #18)
+// ──────────────────────────────────────────────────────────────────
+
+test.describe('Bundle data model updates (issue #18)', () => {
+
+  // Scenario: Create a bundle with all new fields
+  test('creates a bundle with all new fields (emoji, tags, references, bundleLinks)', async ({ request }) => {
+    const res = await request.post('/api/bundles', {
+      data: {
+        title: 'Newsletter Mar 2026',
+        anchorDate: '2026-03-15',
+        emoji: '📰',
+        tags: ['newsletter'],
+        references: [{ name: 'Style guide', url: 'https://docs.google.com/style' }],
+        bundleLinks: [{ name: 'Luma', url: '' }],
+      },
+    });
+    expect(res.status()).toBe(201);
+
+    const body = await res.json();
+    expect(body.bundle.emoji).toBe('📰');
+    expect(body.bundle.tags).toEqual(['newsletter']);
+    expect(body.bundle.references).toEqual([{ name: 'Style guide', url: 'https://docs.google.com/style' }]);
+    expect(body.bundle.bundleLinks).toEqual([{ name: 'Luma', url: '' }]);
+    expect(body.bundle.stage).toBe('preparation');
+    expect(body.bundle.status).toBe('active');
+  });
+
+  // Scenario: Create a bundle with only required fields (backward compatibility)
+  test('creates a bundle with only required fields -- defaults stage and status', async ({ request }) => {
+    const res = await request.post('/api/bundles', {
+      data: { title: 'Simple Bundle', anchorDate: '2026-04-01' },
+    });
+    expect(res.status()).toBe(201);
+
+    const body = await res.json();
+    expect(body.bundle.stage).toBe('preparation');
+    expect(body.bundle.status).toBe('active');
+    expect(body.bundle.emoji).toBeUndefined();
+    expect(body.bundle.tags).toBeUndefined();
+    expect(body.bundle.references).toBeUndefined();
+    expect(body.bundle.bundleLinks).toBeUndefined();
+  });
+
+  // Scenario: Update a bundle stage
+  test('updates a bundle stage from preparation to announced', async ({ request }) => {
+    const create = await request.post('/api/bundles', {
+      data: { title: 'Stage test', anchorDate: '2026-05-01' },
+    });
+    const { bundle } = await create.json();
+    expect(bundle.stage).toBe('preparation');
+
+    const res = await request.put(`/api/bundles/${bundle.id}`, {
+      data: { stage: 'announced' },
+    });
+    expect(res.status()).toBe(200);
+
+    const body = await res.json();
+    expect(body.bundle.stage).toBe('announced');
+  });
+
+  // Scenario: Reject invalid stage value
+  test('rejects invalid stage value with 400', async ({ request }) => {
+    const create = await request.post('/api/bundles', {
+      data: { title: 'Invalid stage', anchorDate: '2026-05-01' },
+    });
+    const { bundle } = await create.json();
+
+    const res = await request.put(`/api/bundles/${bundle.id}`, {
+      data: { stage: 'invalid-stage' },
+    });
+    expect(res.status()).toBe(400);
+
+    const body = await res.json();
+    expect(body.error).toContain('Invalid stage');
+  });
+
+  // Scenario: Reject invalid status value
+  test('rejects invalid status value with 400', async ({ request }) => {
+    const create = await request.post('/api/bundles', {
+      data: { title: 'Invalid status', anchorDate: '2026-05-01' },
+    });
+    const { bundle } = await create.json();
+
+    const res = await request.put(`/api/bundles/${bundle.id}`, {
+      data: { status: 'invalid-status' },
+    });
+    expect(res.status()).toBe(400);
+
+    const body = await res.json();
+    expect(body.error).toContain('Invalid status');
+  });
+
+  // Scenario: Update bundle with references and bundleLinks
+  test('updates bundle with references and bundleLinks', async ({ request }) => {
+    const create = await request.post('/api/bundles', {
+      data: { title: 'Links update', anchorDate: '2026-05-01' },
+    });
+    const { bundle } = await create.json();
+
+    const res = await request.put(`/api/bundles/${bundle.id}`, {
+      data: {
+        references: [{ name: 'Process doc', url: 'https://docs.google.com/proc' }],
+        bundleLinks: [{ name: 'YouTube', url: 'https://youtube.com/watch?v=123' }],
+      },
+    });
+    expect(res.status()).toBe(200);
+
+    const body = await res.json();
+    expect(body.bundle.references).toEqual([{ name: 'Process doc', url: 'https://docs.google.com/proc' }]);
+    expect(body.bundle.bundleLinks).toEqual([{ name: 'YouTube', url: 'https://youtube.com/watch?v=123' }]);
+  });
+
+  // Scenario: Archive a bundle via the archive endpoint
+  test('archives a bundle via PUT /api/bundles/:id/archive', async ({ request }) => {
+    const create = await request.post('/api/bundles', {
+      data: { title: 'Archive me', anchorDate: '2026-05-01' },
+    });
+    const { bundle } = await create.json();
+    expect(bundle.status).toBe('active');
+
+    const res = await request.put(`/api/bundles/${bundle.id}/archive`);
+    expect(res.status()).toBe(200);
+
+    const body = await res.json();
+    expect(body.bundle.status).toBe('archived');
+    expect(body.bundle.id).toBe(bundle.id);
+  });
+
+  // Scenario: Archive returns 404 for non-existent bundle
+  test('archive returns 404 for non-existent bundle', async ({ request }) => {
+    const res = await request.put('/api/bundles/does-not-exist/archive');
+    expect(res.status()).toBe(404);
+  });
+
+  // Scenario: Delete a non-archived bundle is rejected
+  test('delete of non-archived bundle returns 400', async ({ request }) => {
+    const create = await request.post('/api/bundles', {
+      data: { title: 'Cannot delete active', anchorDate: '2026-05-01' },
+    });
+    const { bundle } = await create.json();
+
+    const res = await request.delete(`/api/bundles/${bundle.id}`);
+    expect(res.status()).toBe(400);
+
+    const body = await res.json();
+    expect(body.error).toBe('Only archived bundles can be deleted');
+  });
+
+  // Scenario: Delete an archived bundle succeeds
+  test('delete of archived bundle returns 204', async ({ request }) => {
+    const create = await request.post('/api/bundles', {
+      data: { title: 'Archive then delete', anchorDate: '2026-05-01' },
+    });
+    const { bundle } = await create.json();
+
+    // Archive first
+    await request.put(`/api/bundles/${bundle.id}/archive`);
+
+    const del = await request.delete(`/api/bundles/${bundle.id}`);
+    expect(del.status()).toBe(204);
+
+    // Verify gone
+    const get = await request.get(`/api/bundles/${bundle.id}`);
+    expect(get.status()).toBe(404);
+  });
+
+  // Scenario: Retrieve a bundle with new fields via GET
+  test('GET returns all new fields that were set on creation', async ({ request }) => {
+    const create = await request.post('/api/bundles', {
+      data: {
+        title: 'Full GET test',
+        anchorDate: '2026-06-01',
+        emoji: '🎙️',
+        tags: ['podcast', 'weekly'],
+        references: [{ name: 'Docs', url: 'https://example.com/docs' }],
+        bundleLinks: [{ name: 'YouTube', url: 'https://youtube.com/x' }],
+      },
+    });
+    const { bundle } = await create.json();
+
+    const res = await request.get(`/api/bundles/${bundle.id}`);
+    expect(res.status()).toBe(200);
+
+    const body = await res.json();
+    expect(body.bundle.emoji).toBe('🎙️');
+    expect(body.bundle.tags).toEqual(['podcast', 'weekly']);
+    expect(body.bundle.references).toEqual([{ name: 'Docs', url: 'https://example.com/docs' }]);
+    expect(body.bundle.bundleLinks).toEqual([{ name: 'YouTube', url: 'https://youtube.com/x' }]);
+    expect(body.bundle.stage).toBe('preparation');
+    expect(body.bundle.status).toBe('active');
+  });
+
+  // Scenario: Existing bundle without new fields still works
+  test('bundle without new fields still returns correctly', async ({ request }) => {
+    const create = await request.post('/api/bundles', {
+      data: { title: 'Minimal bundle', anchorDate: '2026-01-01' },
+    });
+    const { bundle } = await create.json();
+
+    const res = await request.get(`/api/bundles/${bundle.id}`);
+    expect(res.status()).toBe(200);
+
+    const body = await res.json();
+    expect(body.bundle.title).toBe('Minimal bundle');
+    // New optional fields are not present
+    expect(body.bundle.emoji).toBeUndefined();
+    expect(body.bundle.tags).toBeUndefined();
+    expect(body.bundle.references).toBeUndefined();
+    expect(body.bundle.bundleLinks).toBeUndefined();
+  });
+
+  // Test all valid stages
+  test('can cycle through all valid stages', async ({ request }) => {
+    const create = await request.post('/api/bundles', {
+      data: { title: 'Stage cycle', anchorDate: '2026-06-01' },
+    });
+    const { bundle } = await create.json();
+
+    const stages = ['announced', 'after-event', 'done'];
+    for (const stage of stages) {
+      const res = await request.put(`/api/bundles/${bundle.id}`, {
+        data: { stage },
+      });
+      expect(res.status()).toBe(200);
+      const body = await res.json();
+      expect(body.bundle.stage).toBe(stage);
+    }
+  });
+
+  // Test updating emoji and tags
+  test('updates emoji and tags via PUT', async ({ request }) => {
+    const create = await request.post('/api/bundles', {
+      data: { title: 'Emoji tags update', anchorDate: '2026-06-01' },
+    });
+    const { bundle } = await create.json();
+
+    const res = await request.put(`/api/bundles/${bundle.id}`, {
+      data: { emoji: '📰', tags: ['newsletter', 'weekly'] },
+    });
+    expect(res.status()).toBe(200);
+
+    const body = await res.json();
+    expect(body.bundle.emoji).toBe('📰');
+    expect(body.bundle.tags).toEqual(['newsletter', 'weekly']);
   });
 });

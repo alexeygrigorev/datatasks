@@ -24,11 +24,14 @@ export interface BundleLink {
 export interface Bundle {
   id: string;
   title?: string;
-  name?: string;
   description?: string | null;
   anchorDate?: string;
   templateId?: string;
-  links?: BundleLink[];
+  references?: BundleLink[];
+  bundleLinks?: BundleLink[];
+  emoji?: string;
+  tags?: string[];
+  stage?: string;
   status?: string;
   createdAt: string;
   updatedAt: string;

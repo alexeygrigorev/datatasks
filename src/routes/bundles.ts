@@ -33,6 +33,13 @@ async function handleBundleRoutes(path: string, method: string, rawBody: string 
       return await handleCollection(method, rawBody, client);
     }
 
+    // Route: /api/bundles/:id/archive
+    const archiveMatch = suffix.match(/^\/([^/]+)\/archive\/?$/);
+    if (archiveMatch) {
+      const id = archiveMatch[1];
+      return await handleArchive(method, id, client);
+    }
+
     // Route: /api/bundles/:id/tasks
     const tasksMatch = suffix.match(/^\/([^/]+)\/tasks\/?$/);
     if (tasksMatch) {
@@ -127,10 +134,32 @@ async function handleCollection(method: string, rawBody: string | null, client: 
       }
     }
 
+    // Validate stage if provided
+    const VALID_STAGES = ['preparation', 'announced', 'after-event', 'done'];
+    if (body.stage !== undefined && !VALID_STAGES.includes(body.stage as string)) {
+      return {
+        statusCode: 400,
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ error: `Invalid stage value. Must be one of: ${VALID_STAGES.join(', ')}` }),
+      };
+    }
+
+    // Validate status if provided
+    const VALID_STATUSES = ['active', 'archived'];
+    if (body.status !== undefined && !VALID_STATUSES.includes(body.status as string)) {
+      return {
+        statusCode: 400,
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ error: `Invalid status value. Must be one of: ${VALID_STATUSES.join(', ')}` }),
+      };
+    }
+
     // Build bundle data
     const bundleData: Record<string, unknown> = {
       title: body.title,
       anchorDate: body.anchorDate,
+      stage: body.stage || 'preparation',
+      status: body.status || 'active',
     };
     if (body.description !== undefined) {
       bundleData.description = body.description;
@@ -138,8 +167,17 @@ async function handleCollection(method: string, rawBody: string | null, client: 
     if (body.templateId !== undefined) {
       bundleData.templateId = body.templateId;
     }
-    if (body.links !== undefined) {
-      bundleData.links = body.links;
+    if (body.references !== undefined) {
+      bundleData.references = body.references;
+    }
+    if (body.bundleLinks !== undefined) {
+      bundleData.bundleLinks = body.bundleLinks;
+    }
+    if (body.emoji !== undefined) {
+      bundleData.emoji = body.emoji;
+    }
+    if (body.tags !== undefined) {
+      bundleData.tags = body.tags;
     }
 
     const bundle = await createBundle(client, bundleData);
@@ -225,8 +263,28 @@ async function handleSingle(method: string, id: string, rawBody: string | null, 
       };
     }
 
+    // Validate stage if provided
+    const VALID_STAGES = ['preparation', 'announced', 'after-event', 'done'];
+    if (body.stage !== undefined && !VALID_STAGES.includes(body.stage as string)) {
+      return {
+        statusCode: 400,
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ error: `Invalid stage value. Must be one of: ${VALID_STAGES.join(', ')}` }),
+      };
+    }
+
+    // Validate status if provided
+    const VALID_STATUSES = ['active', 'archived'];
+    if (body.status !== undefined && !VALID_STATUSES.includes(body.status as string)) {
+      return {
+        statusCode: 400,
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ error: `Invalid status value. Must be one of: ${VALID_STATUSES.join(', ')}` }),
+      };
+    }
+
     // Only allow updating known fields
-    const allowedFields = ['title', 'description', 'anchorDate', 'links'];
+    const allowedFields = ['title', 'description', 'anchorDate', 'references', 'bundleLinks', 'emoji', 'tags', 'stage', 'status'];
     const updates: Record<string, unknown> = {};
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
@@ -260,6 +318,15 @@ async function handleSingle(method: string, id: string, rawBody: string | null, 
       };
     }
 
+    // Only archived bundles can be permanently deleted
+    if (existing.status !== 'archived') {
+      return {
+        statusCode: 400,
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ error: 'Only archived bundles can be deleted' }),
+      };
+    }
+
     await deleteBundle(client, id);
     return {
       statusCode: 204,
@@ -273,6 +340,35 @@ async function handleSingle(method: string, id: string, rawBody: string | null, 
     statusCode: 405,
     headers: JSON_HEADERS,
     body: JSON.stringify({ error: 'Method not allowed' }),
+  };
+}
+
+/**
+ * Handle /api/bundles/:id/archive sub-route (PUT only).
+ */
+async function handleArchive(method: string, id: string, client: DynamoDBDocumentClient): Promise<LambdaResponse> {
+  if (method !== 'PUT') {
+    return {
+      statusCode: 405,
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ error: 'Method not allowed' }),
+    };
+  }
+
+  const existing = await getBundle(client, id);
+  if (!existing) {
+    return {
+      statusCode: 404,
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ error: 'Bundle not found' }),
+    };
+  }
+
+  const bundle = await updateBundle(client, id, { status: 'archived' });
+  return {
+    statusCode: 200,
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ bundle }),
   };
 }
 
