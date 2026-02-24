@@ -30,7 +30,7 @@ async function disableAllConfigs(client: DynamoDBDocumentClient): Promise<void> 
   }
 }
 
-describe('API — Recurring', () => {
+describe('API -- Recurring', () => {
   let client: DynamoDBDocumentClient;
 
   before(async () => {
@@ -46,52 +46,43 @@ describe('API — Recurring', () => {
   // ── POST /api/recurring ──────────────────────────────────────
 
   describe('POST /api/recurring', () => {
-    it('creates a daily recurring config and returns 201', async () => {
+    it('creates a recurring config with cronExpression and returns 201', async () => {
       const res = await invoke('POST', '/api/recurring', {
-        description: 'Daily standup',
-        schedule: 'daily',
+        description: 'Weekly standup',
+        cronExpression: '0 9 * * 3',
       });
 
       assert.strictEqual(res.statusCode, 201);
       const body = JSON.parse(res.body);
       assert.ok(body.recurringConfig);
       assert.ok(body.recurringConfig.id);
-      assert.strictEqual(body.recurringConfig.description, 'Daily standup');
-      assert.strictEqual(body.recurringConfig.schedule, 'daily');
+      assert.strictEqual(body.recurringConfig.description, 'Weekly standup');
+      assert.strictEqual(body.recurringConfig.cronExpression, '0 9 * * 3');
       assert.strictEqual(body.recurringConfig.enabled, true);
       assert.ok(body.recurringConfig.createdAt);
       assert.ok(body.recurringConfig.updatedAt);
+      // Verify old fields are NOT present
+      assert.strictEqual(body.recurringConfig.schedule, undefined);
+      assert.strictEqual(body.recurringConfig.dayOfWeek, undefined);
+      assert.strictEqual(body.recurringConfig.dayOfMonth, undefined);
     });
 
-    it('creates a weekly recurring config with dayOfWeek', async () => {
+    it('creates a recurring config with assigneeId', async () => {
       const res = await invoke('POST', '/api/recurring', {
-        description: 'Weekly mailchimp dump',
-        schedule: 'weekly',
-        dayOfWeek: 3,
+        description: 'Mailchimp dump',
+        cronExpression: '0 10 * * 3',
+        assigneeId: 'user-grace',
       });
 
       assert.strictEqual(res.statusCode, 201);
       const body = JSON.parse(res.body);
-      assert.strictEqual(body.recurringConfig.schedule, 'weekly');
-      assert.strictEqual(body.recurringConfig.dayOfWeek, 3);
-    });
-
-    it('creates a monthly recurring config with dayOfMonth', async () => {
-      const res = await invoke('POST', '/api/recurring', {
-        description: 'Monthly report',
-        schedule: 'monthly',
-        dayOfMonth: 15,
-      });
-
-      assert.strictEqual(res.statusCode, 201);
-      const body = JSON.parse(res.body);
-      assert.strictEqual(body.recurringConfig.schedule, 'monthly');
-      assert.strictEqual(body.recurringConfig.dayOfMonth, 15);
+      assert.strictEqual(body.recurringConfig.assigneeId, 'user-grace');
+      assert.strictEqual(body.recurringConfig.cronExpression, '0 10 * * 3');
     });
 
     it('returns 400 when description is missing', async () => {
       const res = await invoke('POST', '/api/recurring', {
-        schedule: 'daily',
+        cronExpression: '0 9 * * *',
       });
 
       assert.strictEqual(res.statusCode, 400);
@@ -99,61 +90,59 @@ describe('API — Recurring', () => {
       assert.ok(body.error.toLowerCase().includes('description'));
     });
 
-    it('returns 400 when schedule is invalid', async () => {
+    it('returns 400 when cronExpression is missing', async () => {
       const res = await invoke('POST', '/api/recurring', {
-        description: 'Test',
-        schedule: 'biweekly',
+        description: 'No cron',
       });
 
       assert.strictEqual(res.statusCode, 400);
       const body = JSON.parse(res.body);
-      assert.ok(body.error.toLowerCase().includes('schedule'));
+      assert.ok(body.error.toLowerCase().includes('cronexpression'));
     });
 
-    it('returns 400 when schedule is weekly but dayOfWeek is missing', async () => {
+    it('returns 400 for malformed cronExpression (not 5 fields)', async () => {
       const res = await invoke('POST', '/api/recurring', {
-        description: 'Test',
+        description: 'Bad cron',
+        cronExpression: 'every wednesday',
+      });
+
+      assert.strictEqual(res.statusCode, 400);
+      const body = JSON.parse(res.body);
+      assert.ok(body.error.toLowerCase().includes('cron'));
+    });
+
+    it('returns 400 for cronExpression with too few fields', async () => {
+      const res = await invoke('POST', '/api/recurring', {
+        description: 'Bad cron',
+        cronExpression: '0 9 * *',
+      });
+
+      assert.strictEqual(res.statusCode, 400);
+      const body = JSON.parse(res.body);
+      assert.ok(body.error.toLowerCase().includes('cron'));
+    });
+
+    it('returns 400 for cronExpression with too many fields', async () => {
+      const res = await invoke('POST', '/api/recurring', {
+        description: 'Bad cron',
+        cronExpression: '0 9 * * * *',
+      });
+
+      assert.strictEqual(res.statusCode, 400);
+      const body = JSON.parse(res.body);
+      assert.ok(body.error.toLowerCase().includes('cron'));
+    });
+
+    it('rejects old schedule field -- returns 400 requiring cronExpression', async () => {
+      const res = await invoke('POST', '/api/recurring', {
+        description: 'Old style',
         schedule: 'weekly',
+        dayOfWeek: 3,
       });
 
       assert.strictEqual(res.statusCode, 400);
       const body = JSON.parse(res.body);
-      assert.ok(body.error.toLowerCase().includes('dayofweek'));
-    });
-
-    it('returns 400 when schedule is weekly and dayOfWeek is out of range', async () => {
-      const res = await invoke('POST', '/api/recurring', {
-        description: 'Test',
-        schedule: 'weekly',
-        dayOfWeek: 7,
-      });
-
-      assert.strictEqual(res.statusCode, 400);
-      const body = JSON.parse(res.body);
-      assert.ok(body.error.toLowerCase().includes('dayofweek'));
-    });
-
-    it('returns 400 when schedule is monthly but dayOfMonth is missing', async () => {
-      const res = await invoke('POST', '/api/recurring', {
-        description: 'Test',
-        schedule: 'monthly',
-      });
-
-      assert.strictEqual(res.statusCode, 400);
-      const body = JSON.parse(res.body);
-      assert.ok(body.error.toLowerCase().includes('dayofmonth'));
-    });
-
-    it('returns 400 when schedule is monthly and dayOfMonth is out of range', async () => {
-      const res = await invoke('POST', '/api/recurring', {
-        description: 'Test',
-        schedule: 'monthly',
-        dayOfMonth: 32,
-      });
-
-      assert.strictEqual(res.statusCode, 400);
-      const body = JSON.parse(res.body);
-      assert.ok(body.error.toLowerCase().includes('dayofmonth'));
+      assert.ok(body.error.toLowerCase().includes('cronexpression'));
     });
 
     it('returns 400 for malformed JSON body', async () => {
@@ -186,7 +175,7 @@ describe('API — Recurring', () => {
     it('returns 200 with the config for a valid id', async () => {
       const created = await createRecurringConfig(client, {
         description: 'Get test',
-        schedule: 'daily',
+        cronExpression: '0 9 * * *',
       });
 
       const res = await invoke('GET', `/api/recurring/${created.id}`);
@@ -196,6 +185,7 @@ describe('API — Recurring', () => {
       assert.ok(body.recurringConfig);
       assert.strictEqual(body.recurringConfig.id, created.id);
       assert.strictEqual(body.recurringConfig.description, 'Get test');
+      assert.strictEqual(body.recurringConfig.cronExpression, '0 9 * * *');
     });
 
     it('returns 404 for a non-existent config', async () => {
@@ -210,10 +200,40 @@ describe('API — Recurring', () => {
   // ── PUT /api/recurring/:id ──────────────────────────────────
 
   describe('PUT /api/recurring/:id', () => {
-    it('updates a config and returns 200', async () => {
+    it('updates cronExpression and returns 200', async () => {
+      const created = await createRecurringConfig(client, {
+        description: 'Update cron test',
+        cronExpression: '0 9 * * 3',
+      });
+
+      const res = await invoke('PUT', `/api/recurring/${created.id}`, {
+        cronExpression: '0 9 * * 1',
+      });
+
+      assert.strictEqual(res.statusCode, 200);
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.recurringConfig.cronExpression, '0 9 * * 1');
+    });
+
+    it('updates assigneeId and returns 200', async () => {
+      const created = await createRecurringConfig(client, {
+        description: 'Update assignee test',
+        cronExpression: '0 9 * * *',
+      });
+
+      const res = await invoke('PUT', `/api/recurring/${created.id}`, {
+        assigneeId: 'user-valeriia',
+      });
+
+      assert.strictEqual(res.statusCode, 200);
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.recurringConfig.assigneeId, 'user-valeriia');
+    });
+
+    it('updates description and enabled and returns 200', async () => {
       const created = await createRecurringConfig(client, {
         description: 'Old description',
-        schedule: 'daily',
+        cronExpression: '0 9 * * *',
       });
 
       await new Promise((r) => setTimeout(r, 10));
@@ -230,6 +250,21 @@ describe('API — Recurring', () => {
       assert.ok(body.recurringConfig.updatedAt > created.updatedAt);
     });
 
+    it('returns 400 for malformed cronExpression on update', async () => {
+      const created = await createRecurringConfig(client, {
+        description: 'Bad update test',
+        cronExpression: '0 9 * * *',
+      });
+
+      const res = await invoke('PUT', `/api/recurring/${created.id}`, {
+        cronExpression: 'not a cron',
+      });
+
+      assert.strictEqual(res.statusCode, 400);
+      const body = JSON.parse(res.body);
+      assert.ok(body.error.toLowerCase().includes('cron'));
+    });
+
     it('returns 404 when updating a non-existent config', async () => {
       const res = await invoke('PUT', '/api/recurring/does-not-exist', {
         description: 'New',
@@ -241,7 +276,7 @@ describe('API — Recurring', () => {
     it('returns 400 when body is empty', async () => {
       const created = await createRecurringConfig(client, {
         description: 'Test',
-        schedule: 'daily',
+        cronExpression: '0 9 * * *',
       });
 
       const res = await invoke('PUT', `/api/recurring/${created.id}`, {});
@@ -251,7 +286,7 @@ describe('API — Recurring', () => {
     it('returns 400 when body has no valid fields', async () => {
       const created = await createRecurringConfig(client, {
         description: 'Test',
-        schedule: 'daily',
+        cronExpression: '0 9 * * *',
       });
 
       const res = await invoke('PUT', `/api/recurring/${created.id}`, {
@@ -266,7 +301,7 @@ describe('API — Recurring', () => {
     it('returns 400 for malformed JSON', async () => {
       const created = await createRecurringConfig(client, {
         description: 'Test',
-        schedule: 'daily',
+        cronExpression: '0 9 * * *',
       });
 
       const res = await invoke('PUT', `/api/recurring/${created.id}`, 'bad json');
@@ -280,7 +315,7 @@ describe('API — Recurring', () => {
     it('deletes an existing config and returns 204', async () => {
       const created = await createRecurringConfig(client, {
         description: 'Delete me',
-        schedule: 'daily',
+        cronExpression: '0 9 * * *',
       });
 
       const res = await invoke('DELETE', `/api/recurring/${created.id}`);
@@ -299,12 +334,12 @@ describe('API — Recurring', () => {
   // ── POST /api/recurring/generate ────────────────────────────
 
   describe('POST /api/recurring/generate', () => {
-    it('generates daily tasks for the given range', async () => {
+    it('generates daily tasks for the given range (cron: 0 9 * * *)', async () => {
       await disableAllConfigs(client);
 
       await createRecurringConfig(client, {
         description: 'API gen standup',
-        schedule: 'daily',
+        cronExpression: '0 9 * * *',
       });
 
       const res = await invoke('POST', '/api/recurring/generate', {
@@ -324,7 +359,7 @@ describe('API — Recurring', () => {
       }
     });
 
-    it('is idempotent — second call skips existing tasks', async () => {
+    it('is idempotent -- second call skips existing tasks', async () => {
       const res = await invoke('POST', '/api/recurring/generate', {
         startDate: '2028-01-02',
         endDate: '2028-01-04',
@@ -336,13 +371,12 @@ describe('API — Recurring', () => {
       assert.strictEqual(body.skipped, 3);
     });
 
-    it('generates weekly tasks only on matching dayOfWeek', async () => {
+    it('generates weekly tasks only on matching day-of-week (cron: 0 9 * * 3)', async () => {
       await disableAllConfigs(client);
 
       await createRecurringConfig(client, {
         description: 'API gen wednesday',
-        schedule: 'weekly',
-        dayOfWeek: 3,
+        cronExpression: '0 9 * * 3',
       });
 
       const res = await invoke('POST', '/api/recurring/generate', {
@@ -357,13 +391,12 @@ describe('API — Recurring', () => {
       assert.deepStrictEqual(dates, ['2028-02-02', '2028-02-09']);
     });
 
-    it('generates monthly tasks only on matching dayOfMonth', async () => {
+    it('generates monthly tasks only on matching day-of-month (cron: 0 9 15 * *)', async () => {
       await disableAllConfigs(client);
 
       await createRecurringConfig(client, {
         description: 'API gen monthly report',
-        schedule: 'monthly',
-        dayOfMonth: 15,
+        cronExpression: '0 9 15 * *',
       });
 
       const res = await invoke('POST', '/api/recurring/generate', {
@@ -378,12 +411,32 @@ describe('API — Recurring', () => {
       assert.deepStrictEqual(dates, ['2028-06-15', '2028-07-15', '2028-08-15']);
     });
 
+    it('generated tasks inherit assigneeId from config', async () => {
+      await disableAllConfigs(client);
+
+      await createRecurringConfig(client, {
+        description: 'API gen with assignee',
+        cronExpression: '0 9 * * *',
+        assigneeId: 'user-grace',
+      });
+
+      const res = await invoke('POST', '/api/recurring/generate', {
+        startDate: '2028-05-01',
+        endDate: '2028-05-01',
+      });
+
+      assert.strictEqual(res.statusCode, 200);
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.generated.length, 1);
+      assert.strictEqual(body.generated[0].assigneeId, 'user-grace');
+    });
+
     it('skips disabled configs', async () => {
       await disableAllConfigs(client);
 
       await createRecurringConfig(client, {
         description: 'API gen disabled',
-        schedule: 'daily',
+        cronExpression: '0 9 * * *',
         enabled: false,
       });
 
@@ -449,7 +502,7 @@ describe('API — Recurring', () => {
 
       await createRecurringConfig(client, {
         description: 'API visible standup',
-        schedule: 'daily',
+        cronExpression: '0 9 * * *',
       });
 
       await invoke('POST', '/api/recurring/generate', {
@@ -501,7 +554,7 @@ describe('API — Recurring', () => {
 
       const res201 = await invoke('POST', '/api/recurring', {
         description: 'CT Test',
-        schedule: 'daily',
+        cronExpression: '0 9 * * *',
       });
       assert.strictEqual(res201.headers!['Content-Type'], 'application/json');
 

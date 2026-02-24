@@ -21,6 +21,56 @@ function cleanItem(item: Record<string, unknown> | undefined): RecurringConfig |
 }
 
 /**
+ * Match a single cron field value against a date value.
+ * Supports: '*' (any), specific numbers, comma-separated lists, and step values (N).
+ */
+function matchCronField(fieldExpr: string, value: number): boolean {
+  // Wildcard matches everything
+  if (fieldExpr === '*') return true;
+
+  // Step value: */N
+  if (fieldExpr.startsWith('*/')) {
+    const step = parseInt(fieldExpr.slice(2), 10);
+    if (isNaN(step) || step <= 0) return false;
+    return value % step === 0;
+  }
+
+  // Comma-separated list: 1,3,5
+  const parts = fieldExpr.split(',');
+  for (const part of parts) {
+    const num = parseInt(part.trim(), 10);
+    if (!isNaN(num) && num === value) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Check if a date matches a cron expression.
+ * Cron format: minute hour day-of-month month day-of-week
+ * For date-level matching, only day-of-month (field 3), month (field 4),
+ * and day-of-week (field 5) matter.
+ */
+function cronMatchesDate(cronExpression: string, date: Date): boolean {
+  const fields = cronExpression.trim().split(/\s+/);
+  if (fields.length !== 5) return false;
+
+  const dayOfMonth = fields[2];
+  const month = fields[3];
+  const dayOfWeek = fields[4];
+
+  const dateDay = date.getUTCDate();
+  const dateMonth = date.getUTCMonth() + 1; // JS months are 0-based
+  const dateDow = date.getUTCDay(); // 0=Sunday
+
+  return (
+    matchCronField(dayOfMonth, dateDay) &&
+    matchCronField(month, dateMonth) &&
+    matchCronField(dayOfWeek, dateDow)
+  );
+}
+
+/**
  * Create a new recurring config. Generates a UUID, sets createdAt/updatedAt.
  */
 async function createRecurringConfig(client: DynamoDBDocumentClient, data: Record<string, unknown>): Promise<RecurringConfig> {
@@ -169,6 +219,7 @@ async function recurringTaskExists(client: DynamoDBDocumentClient, recurringConf
 
 /**
  * Generate concrete task instances from enabled recurring configs for a date range.
+ * Uses cron expression matching to determine which dates each config should generate tasks for.
  */
 async function generateRecurringTasks(client: DynamoDBDocumentClient, startDate: string, endDate: string): Promise<{ generated: Task[]; skipped: number }> {
   const configs = await listEnabledRecurringConfigs(client);
@@ -190,15 +241,7 @@ async function generateRecurringTasks(client: DynamoDBDocumentClient, startDate:
     for (const dateStr of dates) {
       const d = new Date(dateStr + 'T00:00:00Z');
 
-      let matches = false;
-
-      if (config.schedule === 'daily') {
-        matches = true;
-      } else if (config.schedule === 'weekly') {
-        matches = d.getUTCDay() === config.dayOfWeek;
-      } else if (config.schedule === 'monthly') {
-        matches = d.getUTCDate() === config.dayOfMonth;
-      }
+      const matches = cronMatchesDate(config.cronExpression, d);
 
       if (!matches) continue;
 
@@ -218,8 +261,8 @@ async function generateRecurringTasks(client: DynamoDBDocumentClient, startDate:
         recurringConfigId: config.id,
       };
 
-      if (config.bundleId) {
-        taskData.bundleId = config.bundleId;
+      if (config.assigneeId) {
+        taskData.assigneeId = config.assigneeId;
       }
 
       const task = await createTask(client, taskData);
@@ -238,4 +281,6 @@ export {
   listRecurringConfigs,
   listEnabledRecurringConfigs,
   generateRecurringTasks,
+  cronMatchesDate,
+  matchCronField,
 };

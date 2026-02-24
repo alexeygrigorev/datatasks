@@ -87,10 +87,8 @@ export interface Template {
 export interface RecurringConfig {
   id: string;
   description: string;
-  schedule: string;
-  dayOfWeek?: number;
-  dayOfMonth?: number;
-  bundleId?: string;
+  cronExpression: string;
+  assigneeId?: string;
   enabled: boolean;
   createdAt: string;
   updatedAt: string;

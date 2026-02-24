@@ -12,7 +12,13 @@ import type { LambdaResponse } from '../types';
 
 const JSON_HEADERS: Record<string, string> = { 'Content-Type': 'application/json' };
 
-const VALID_SCHEDULES = ['daily', 'weekly', 'monthly'];
+/**
+ * Validate that a cron expression has exactly 5 space-separated fields.
+ */
+function isValidCronExpression(expr: string): boolean {
+  const fields = expr.trim().split(/\s+/);
+  return fields.length === 5;
+}
 
 /**
  * Validate recurring config data for create/update.
@@ -25,30 +31,30 @@ function validateRecurringData(body: Record<string, unknown>, isUpdate: boolean)
       return 'Missing required field: description';
     }
 
-    if (!body.schedule || !VALID_SCHEDULES.includes(body.schedule as string)) {
-      return 'schedule must be one of: daily, weekly, monthly';
+    if (!body.cronExpression || typeof body.cronExpression !== 'string') {
+      return 'Missing required field: cronExpression';
+    }
+
+    if (!isValidCronExpression(body.cronExpression as string)) {
+      return 'Invalid cron expression format: must have exactly 5 space-separated fields';
     }
   }
 
-  // Validate schedule-specific fields
-  const schedule = body.schedule;
-
-  if (schedule === 'weekly') {
-    if (body.dayOfWeek === undefined || body.dayOfWeek === null) {
-      return 'dayOfWeek is required when schedule is weekly';
-    }
-    if (!Number.isInteger(body.dayOfWeek) || (body.dayOfWeek as number) < 0 || (body.dayOfWeek as number) > 6) {
-      return 'dayOfWeek must be an integer between 0 and 6';
+  // Validate cronExpression format if provided on update
+  if (isUpdate && body.cronExpression !== undefined) {
+    if (typeof body.cronExpression !== 'string' || !isValidCronExpression(body.cronExpression as string)) {
+      return 'Invalid cron expression format: must have exactly 5 space-separated fields';
     }
   }
 
-  if (schedule === 'monthly') {
-    if (body.dayOfMonth === undefined || body.dayOfMonth === null) {
-      return 'dayOfMonth is required when schedule is monthly';
-    }
-    if (!Number.isInteger(body.dayOfMonth) || (body.dayOfMonth as number) < 1 || (body.dayOfMonth as number) > 31) {
-      return 'dayOfMonth must be an integer between 1 and 31';
-    }
+  // Validate assigneeId type if provided
+  if (body.assigneeId !== undefined && typeof body.assigneeId !== 'string') {
+    return 'assigneeId must be a string';
+  }
+
+  // Validate enabled type if provided
+  if (body.enabled !== undefined && typeof body.enabled !== 'boolean') {
+    return 'enabled must be a boolean';
   }
 
   return null;
@@ -134,7 +140,7 @@ async function handleCollection(method: string, rawBody: string | null, client: 
       };
     }
 
-    const allowedFields = ['description', 'schedule', 'dayOfWeek', 'dayOfMonth', 'bundleId', 'enabled'];
+    const allowedFields = ['description', 'cronExpression', 'assigneeId', 'enabled'];
     const data: Record<string, unknown> = {};
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
@@ -207,10 +213,8 @@ async function handleSingle(method: string, id: string, rawBody: string | null, 
       };
     }
 
-    // Validate schedule-specific fields if schedule is being updated
-    const effectiveSchedule = (body.schedule || existing.schedule) as string;
-    const validationBody = { ...body, schedule: effectiveSchedule };
-    const validationError = validateRecurringData(validationBody, true);
+    // Validate fields
+    const validationError = validateRecurringData(body, true);
     if (validationError) {
       return {
         statusCode: 400,
@@ -219,7 +223,7 @@ async function handleSingle(method: string, id: string, rawBody: string | null, 
       };
     }
 
-    const allowedFields = ['description', 'schedule', 'dayOfWeek', 'dayOfMonth', 'bundleId', 'enabled'];
+    const allowedFields = ['description', 'cronExpression', 'assigneeId', 'enabled'];
     const updates: Record<string, unknown> = {};
     for (const field of allowedFields) {
       if (body[field] !== undefined) {
