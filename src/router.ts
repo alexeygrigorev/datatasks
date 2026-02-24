@@ -9,6 +9,8 @@ import { handleUserRoutes } from './routes/users';
 import { handleFileRoutes } from './routes/files';
 import { handleTelegramWebhook } from './routes/telegram';
 import { handleEmailWebhook } from './routes/email';
+import { handleNotificationRoutes } from './routes/notifications';
+import { handleCronRoutes } from './routes/cron';
 import {
   createTask,
   getTask,
@@ -303,6 +305,20 @@ async function route(event: LambdaEvent, client: DynamoDBDocumentClient): Promis
 
     if (reqPath.startsWith('/api/users')) {
       const result = await handleUserRoutes(reqPath, method, event.body || null);
+      if (result) return result;
+    }
+
+    // ── Notification routes ─────────────────────────────────────
+
+    if (reqPath.startsWith('/api/notifications')) {
+      const result = await handleNotificationRoutes(reqPath, method, event.body || null);
+      if (result) return result;
+    }
+
+    // ── Cron routes ───────────────────────────────────────────────
+
+    if (reqPath.startsWith('/api/cron')) {
+      const result = await handleCronRoutes(reqPath, method);
       if (result) return result;
     }
 

@@ -117,6 +117,17 @@ export interface User {
   createdAt: string;
 }
 
+// --- Notification ---
+
+export interface Notification {
+  id: string;
+  message: string;
+  bundleId?: string;
+  templateId?: string;
+  dismissed: boolean;
+  createdAt: string;
+}
+
 // --- Lambda ---
 
 export interface LambdaEvent {
