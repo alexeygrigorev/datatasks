@@ -14,6 +14,7 @@ export interface Task {
   tags?: string[];
   bundleId?: string;
   templateTaskRef?: string;
+  stageOnComplete?: string;
   recurringConfigId?: string;
   createdAt: string;
   updatedAt: string;

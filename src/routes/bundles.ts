@@ -123,8 +123,9 @@ async function handleCollection(method: string, rawBody: string | null, client: 
     }
 
     // If templateId is provided, verify template exists before creating bundle
+    let template = null;
     if (body.templateId) {
-      const template = await getTemplate(client, body.templateId as string);
+      template = await getTemplate(client, body.templateId as string);
       if (!template) {
         return {
           statusCode: 404,
@@ -167,17 +168,53 @@ async function handleCollection(method: string, rawBody: string | null, client: 
     if (body.templateId !== undefined) {
       bundleData.templateId = body.templateId;
     }
-    if (body.references !== undefined) {
-      bundleData.references = body.references;
-    }
-    if (body.bundleLinks !== undefined) {
-      bundleData.bundleLinks = body.bundleLinks;
-    }
-    if (body.emoji !== undefined) {
-      bundleData.emoji = body.emoji;
-    }
-    if (body.tags !== undefined) {
-      bundleData.tags = body.tags;
+
+    // When templateId is provided, copy template fields to bundle (caller values take precedence)
+    if (template) {
+      // Copy references from template if caller didn't provide them
+      if (body.references !== undefined) {
+        bundleData.references = body.references;
+      } else if (template.references && template.references.length > 0) {
+        bundleData.references = template.references;
+      }
+
+      // Create bundleLinks from template bundleLinkDefinitions if caller didn't provide them
+      if (body.bundleLinks !== undefined) {
+        bundleData.bundleLinks = body.bundleLinks;
+      } else if (template.bundleLinkDefinitions && template.bundleLinkDefinitions.length > 0) {
+        bundleData.bundleLinks = template.bundleLinkDefinitions.map((def: { name: string }) => ({
+          name: def.name,
+          url: '',
+        }));
+      }
+
+      // Copy emoji from template if caller didn't provide it
+      if (body.emoji !== undefined) {
+        bundleData.emoji = body.emoji;
+      } else if (template.emoji) {
+        bundleData.emoji = template.emoji;
+      }
+
+      // Copy tags from template if caller didn't provide them
+      if (body.tags !== undefined) {
+        bundleData.tags = body.tags;
+      } else if (template.tags && template.tags.length > 0) {
+        bundleData.tags = template.tags;
+      }
+    } else {
+      // No template - use caller-provided values directly
+      if (body.references !== undefined) {
+        bundleData.references = body.references;
+      }
+      if (body.bundleLinks !== undefined) {
+        bundleData.bundleLinks = body.bundleLinks;
+      }
+      if (body.emoji !== undefined) {
+        bundleData.emoji = body.emoji;
+      }
+      if (body.tags !== undefined) {
+        bundleData.tags = body.tags;
+      }
     }
 
     const bundle = await createBundle(client, bundleData);

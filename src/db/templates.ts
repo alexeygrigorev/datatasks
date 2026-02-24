@@ -148,8 +148,32 @@ async function instantiateTemplate(client: DynamoDBDocumentClient, templateId: s
       templateTaskRef: def.refId,
       status: 'todo',
     };
+
+    // Set instructionsUrl from task definition (not comment)
     if (def.instructionsUrl) {
-      taskData.comment = def.instructionsUrl;
+      taskData.instructionsUrl = def.instructionsUrl;
+    }
+
+    // Set assigneeId: task definition overrides, fall back to template default
+    if (def.assigneeId) {
+      taskData.assigneeId = def.assigneeId;
+    } else if (template.defaultAssigneeId) {
+      taskData.assigneeId = template.defaultAssigneeId;
+    }
+
+    // Set requiredLinkName from task definition
+    if (def.requiredLinkName) {
+      taskData.requiredLinkName = def.requiredLinkName;
+    }
+
+    // Set stageOnComplete from task definition (internal field for stage transitions)
+    if (def.stageOnComplete) {
+      taskData.stageOnComplete = def.stageOnComplete;
+    }
+
+    // Inherit tags from template
+    if (template.tags && template.tags.length > 0) {
+      taskData.tags = template.tags;
     }
 
     const task = await createTask(client, taskData);

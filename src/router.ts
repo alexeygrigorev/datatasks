@@ -18,7 +18,8 @@ import {
   listTasksByBundle,
   listTasksByStatus,
 } from './db/tasks';
-import type { LambdaEvent, LambdaResponse } from './types';
+import { updateBundle } from './db/bundles';
+import type { LambdaEvent, LambdaResponse, Task } from './types';
 
 const JSON_HEADERS: Record<string, string> = { 'Content-Type': 'application/json' };
 
@@ -231,6 +232,16 @@ async function route(event: LambdaEvent, client: DynamoDBDocumentClient): Promis
       }
 
       const updated = await updateTask(client, id, updates);
+
+      // Stage transition: when a task with stageOnComplete is marked done,
+      // automatically update the parent bundle's stage
+      if (updated && updates.status === 'done' && existing.status !== 'done') {
+        const task = updated as Task;
+        if (task.stageOnComplete && task.bundleId && task.source === 'template') {
+          await updateBundle(client, task.bundleId, { stage: task.stageOnComplete });
+        }
+      }
+
       return jsonResponse(200, updated);
     }
 

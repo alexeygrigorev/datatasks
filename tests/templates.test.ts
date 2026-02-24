@@ -284,4 +284,139 @@ describe('Templates data layer', () => {
     assert.strictEqual(fetched.triggerSchedule, undefined);
     assert.strictEqual(fetched.triggerLeadDays, undefined);
   });
+
+  // --- Issue #20: instantiateTemplate with new fields ---
+
+  it('instantiateTemplate sets instructionsUrl on task (not comment)', async () => {
+    const template = await createTemplate(client, {
+      name: 'Instructions test',
+      type: 'test',
+      taskDefinitions: [
+        {
+          refId: 'inst',
+          description: 'Task with instructions',
+          offsetDays: 0,
+          instructionsUrl: 'https://docs.google.com/instructions',
+        },
+      ],
+    });
+
+    const tasks = await instantiateTemplate(client, template.id, 'bundle-inst-1', '2026-06-15');
+    assert.strictEqual(tasks.length, 1);
+    assert.strictEqual(tasks[0].instructionsUrl, 'https://docs.google.com/instructions');
+    // comment should NOT be set to the instructionsUrl
+    assert.strictEqual(tasks[0].comment, undefined);
+
+    // Verify persisted
+    const fetched = await getTask(client, tasks[0].id);
+    assert.ok(fetched);
+    assert.strictEqual(fetched.instructionsUrl, 'https://docs.google.com/instructions');
+    assert.strictEqual(fetched.comment, undefined);
+  });
+
+  it('instantiateTemplate sets assigneeId from task def, falls back to defaultAssigneeId', async () => {
+    const template = await createTemplate(client, {
+      name: 'Assignee test',
+      type: 'test',
+      defaultAssigneeId: 'user-grace',
+      taskDefinitions: [
+        { refId: 'with-assignee', description: 'Has specific assignee', offsetDays: 0, assigneeId: 'user-valeriia' },
+        { refId: 'no-assignee', description: 'Uses default assignee', offsetDays: 1 },
+      ],
+    });
+
+    const tasks = await instantiateTemplate(client, template.id, 'bundle-assignee-1', '2026-06-15');
+    assert.strictEqual(tasks.length, 2);
+
+    const withAssignee = tasks.find(t => t.templateTaskRef === 'with-assignee');
+    const noAssignee = tasks.find(t => t.templateTaskRef === 'no-assignee');
+
+    assert.ok(withAssignee);
+    assert.strictEqual(withAssignee.assigneeId, 'user-valeriia');
+
+    assert.ok(noAssignee);
+    assert.strictEqual(noAssignee.assigneeId, 'user-grace');
+  });
+
+  it('instantiateTemplate sets requiredLinkName from task definition', async () => {
+    const template = await createTemplate(client, {
+      name: 'RequiredLink test',
+      type: 'test',
+      taskDefinitions: [
+        { refId: 'with-link', description: 'Needs Luma link', offsetDays: 0, requiredLinkName: 'Luma' },
+        { refId: 'no-link', description: 'No required link', offsetDays: 1 },
+      ],
+    });
+
+    const tasks = await instantiateTemplate(client, template.id, 'bundle-link-1', '2026-06-15');
+    const withLink = tasks.find(t => t.templateTaskRef === 'with-link');
+    const noLink = tasks.find(t => t.templateTaskRef === 'no-link');
+
+    assert.ok(withLink);
+    assert.strictEqual(withLink.requiredLinkName, 'Luma');
+
+    assert.ok(noLink);
+    assert.strictEqual(noLink.requiredLinkName, undefined);
+  });
+
+  it('instantiateTemplate sets stageOnComplete from task definition', async () => {
+    const template = await createTemplate(client, {
+      name: 'StageOnComplete test',
+      type: 'test',
+      taskDefinitions: [
+        { refId: 'milestone', description: 'Stream', offsetDays: 0, isMilestone: true, stageOnComplete: 'after-event' },
+        { refId: 'regular', description: 'Regular task', offsetDays: 1 },
+      ],
+    });
+
+    const tasks = await instantiateTemplate(client, template.id, 'bundle-stage-1', '2026-06-15');
+    const milestone = tasks.find(t => t.templateTaskRef === 'milestone');
+    const regular = tasks.find(t => t.templateTaskRef === 'regular');
+
+    assert.ok(milestone);
+    assert.strictEqual((milestone as Record<string, unknown>).stageOnComplete, 'after-event');
+
+    assert.ok(regular);
+    assert.strictEqual((regular as Record<string, unknown>).stageOnComplete, undefined);
+  });
+
+  it('instantiateTemplate inherits tags from template', async () => {
+    const template = await createTemplate(client, {
+      name: 'Tags inherit test',
+      type: 'test',
+      tags: ['podcast', 'content'],
+      taskDefinitions: [
+        { refId: 'task1', description: 'Task 1', offsetDays: 0 },
+        { refId: 'task2', description: 'Task 2', offsetDays: 1 },
+      ],
+    });
+
+    const tasks = await instantiateTemplate(client, template.id, 'bundle-tags-1', '2026-06-15');
+    for (const task of tasks) {
+      assert.deepStrictEqual(task.tags, ['podcast', 'content']);
+    }
+  });
+
+  it('instantiateTemplate calculates dates correctly for various offsets', async () => {
+    const template = await createTemplate(client, {
+      name: 'Date calc test',
+      type: 'test',
+      taskDefinitions: [
+        { refId: 'd-14', description: 'Two weeks before', offsetDays: -14 },
+        { refId: 'd-7', description: 'One week before', offsetDays: -7 },
+        { refId: 'd0', description: 'Anchor day', offsetDays: 0, isMilestone: true },
+        { refId: 'd3', description: 'Three days after', offsetDays: 3 },
+        { refId: 'd7', description: 'One week after', offsetDays: 7 },
+      ],
+    });
+
+    const tasks = await instantiateTemplate(client, template.id, 'bundle-dates-1', '2026-06-15');
+    tasks.sort((a, b) => a.date.localeCompare(b.date));
+
+    assert.strictEqual(tasks[0].date, '2026-06-01');
+    assert.strictEqual(tasks[1].date, '2026-06-08');
+    assert.strictEqual(tasks[2].date, '2026-06-15');
+    assert.strictEqual(tasks[3].date, '2026-06-18');
+    assert.strictEqual(tasks[4].date, '2026-06-22');
+  });
 });

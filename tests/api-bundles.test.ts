@@ -624,4 +624,262 @@ describe('API — Bundles', () => {
       assert.strictEqual(res405.headers!['Content-Type'], 'application/json');
     });
   });
+
+  // ---- Issue #20: Template instantiation with new fields ----
+
+  describe('Template instantiation with new fields (issue #20)', () => {
+    it('bundle inherits emoji, tags, references, and bundleLinks from template', async () => {
+      const template = await createTemplate(client, {
+        name: 'Full Template',
+        type: 'event',
+        emoji: '📰',
+        tags: ['newsletter', 'weekly'],
+        references: [{ name: 'Style guide', url: 'https://docs.google.com/style' }],
+        bundleLinkDefinitions: [{ name: 'Luma' }, { name: 'YouTube' }],
+        taskDefinitions: [
+          { refId: 'prep', description: 'Prepare', offsetDays: -7 },
+        ],
+      });
+
+      const res = await invoke('POST', '/api/bundles', {
+        title: 'Inherited Bundle',
+        anchorDate: '2026-06-15',
+        templateId: template.id,
+      });
+
+      assert.strictEqual(res.statusCode, 201);
+      const body = JSON.parse(res.body);
+
+      assert.strictEqual(body.bundle.emoji, '📰');
+      assert.deepStrictEqual(body.bundle.tags, ['newsletter', 'weekly']);
+      assert.deepStrictEqual(body.bundle.references, [{ name: 'Style guide', url: 'https://docs.google.com/style' }]);
+      assert.deepStrictEqual(body.bundle.bundleLinks, [{ name: 'Luma', url: '' }, { name: 'YouTube', url: '' }]);
+    });
+
+    it('caller-provided values override template values', async () => {
+      const template = await createTemplate(client, {
+        name: 'Override Template',
+        type: 'event',
+        emoji: '📰',
+        tags: ['newsletter'],
+        taskDefinitions: [
+          { refId: 'prep', description: 'Prepare', offsetDays: 0 },
+        ],
+      });
+
+      const res = await invoke('POST', '/api/bundles', {
+        title: 'Override Bundle',
+        anchorDate: '2026-06-15',
+        templateId: template.id,
+        emoji: '🎉',
+        tags: ['custom'],
+      });
+
+      assert.strictEqual(res.statusCode, 201);
+      const body = JSON.parse(res.body);
+
+      assert.strictEqual(body.bundle.emoji, '🎉');
+      assert.deepStrictEqual(body.bundle.tags, ['custom']);
+    });
+
+    it('tasks have instructionsUrl set correctly (not in comment)', async () => {
+      const template = await createTemplate(client, {
+        name: 'Instructions Template',
+        type: 'test',
+        taskDefinitions: [
+          {
+            refId: 'inst',
+            description: 'Task with instructions',
+            offsetDays: 0,
+            instructionsUrl: 'https://docs.google.com/instructions',
+          },
+        ],
+      });
+
+      const res = await invoke('POST', '/api/bundles', {
+        title: 'Instructions Bundle',
+        anchorDate: '2026-06-15',
+        templateId: template.id,
+      });
+
+      assert.strictEqual(res.statusCode, 201);
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.tasks[0].instructionsUrl, 'https://docs.google.com/instructions');
+      assert.strictEqual(body.tasks[0].comment, undefined);
+    });
+
+    it('tasks inherit assigneeId with fallback to defaultAssigneeId', async () => {
+      const template = await createTemplate(client, {
+        name: 'Assignee Template',
+        type: 'test',
+        defaultAssigneeId: 'user-grace',
+        taskDefinitions: [
+          { refId: 'specific', description: 'Specific assignee', offsetDays: 0, assigneeId: 'user-valeriia' },
+          { refId: 'default', description: 'Default assignee', offsetDays: 1 },
+        ],
+      });
+
+      const res = await invoke('POST', '/api/bundles', {
+        title: 'Assignee Bundle',
+        anchorDate: '2026-06-15',
+        templateId: template.id,
+      });
+
+      assert.strictEqual(res.statusCode, 201);
+      const body = JSON.parse(res.body);
+
+      const specific = body.tasks.find((t: any) => t.templateTaskRef === 'specific');
+      const defaultTask = body.tasks.find((t: any) => t.templateTaskRef === 'default');
+
+      assert.strictEqual(specific.assigneeId, 'user-valeriia');
+      assert.strictEqual(defaultTask.assigneeId, 'user-grace');
+    });
+
+    it('tasks inherit requiredLinkName from task definition', async () => {
+      const template = await createTemplate(client, {
+        name: 'RequiredLink Template',
+        type: 'test',
+        taskDefinitions: [
+          { refId: 'with-link', description: 'Needs Luma', offsetDays: 0, requiredLinkName: 'Luma' },
+        ],
+      });
+
+      const res = await invoke('POST', '/api/bundles', {
+        title: 'RequiredLink Bundle',
+        anchorDate: '2026-06-15',
+        templateId: template.id,
+      });
+
+      assert.strictEqual(res.statusCode, 201);
+      const body = JSON.parse(res.body);
+      assert.strictEqual(body.tasks[0].requiredLinkName, 'Luma');
+    });
+
+    it('tasks inherit tags from template', async () => {
+      const template = await createTemplate(client, {
+        name: 'Tags Template',
+        type: 'test',
+        tags: ['podcast', 'content'],
+        taskDefinitions: [
+          { refId: 'task1', description: 'Task 1', offsetDays: 0 },
+          { refId: 'task2', description: 'Task 2', offsetDays: 1 },
+        ],
+      });
+
+      const res = await invoke('POST', '/api/bundles', {
+        title: 'Tags Bundle',
+        anchorDate: '2026-06-15',
+        templateId: template.id,
+      });
+
+      assert.strictEqual(res.statusCode, 201);
+      const body = JSON.parse(res.body);
+      for (const task of body.tasks) {
+        assert.deepStrictEqual(task.tags, ['podcast', 'content']);
+      }
+    });
+
+    it('milestone task completion triggers stage transition', async () => {
+      const template = await createTemplate(client, {
+        name: 'Stage Transition Template',
+        type: 'test',
+        taskDefinitions: [
+          { refId: 'milestone', description: 'Stream', offsetDays: 0, isMilestone: true, stageOnComplete: 'after-event' },
+          { refId: 'regular', description: 'Regular task', offsetDays: 1 },
+        ],
+      });
+
+      const createRes = await invoke('POST', '/api/bundles', {
+        title: 'Stage Transition Bundle',
+        anchorDate: '2026-06-15',
+        templateId: template.id,
+      });
+
+      assert.strictEqual(createRes.statusCode, 201);
+      const createBody = JSON.parse(createRes.body);
+      const bundleId = createBody.bundle.id;
+
+      // Verify bundle starts at "preparation"
+      assert.strictEqual(createBody.bundle.stage, 'preparation');
+
+      // Find the milestone task
+      const milestoneTask = createBody.tasks.find((t: any) => t.templateTaskRef === 'milestone');
+      assert.ok(milestoneTask);
+
+      // Mark milestone task as done
+      const updateRes = await invoke('PUT', `/api/tasks/${milestoneTask.id}`, {
+        status: 'done',
+      });
+      assert.strictEqual(updateRes.statusCode, 200);
+
+      // Verify bundle stage changed to "after-event"
+      const bundleRes = await invoke('GET', `/api/bundles/${bundleId}`);
+      assert.strictEqual(bundleRes.statusCode, 200);
+      const bundleBody = JSON.parse(bundleRes.body);
+      assert.strictEqual(bundleBody.bundle.stage, 'after-event');
+    });
+
+    it('non-milestone task completion does not trigger stage transition', async () => {
+      const template = await createTemplate(client, {
+        name: 'No Stage Transition Template',
+        type: 'test',
+        taskDefinitions: [
+          { refId: 'milestone', description: 'Stream', offsetDays: 0, isMilestone: true, stageOnComplete: 'after-event' },
+          { refId: 'regular', description: 'Regular task', offsetDays: 1 },
+        ],
+      });
+
+      const createRes = await invoke('POST', '/api/bundles', {
+        title: 'No Stage Transition Bundle',
+        anchorDate: '2026-06-15',
+        templateId: template.id,
+      });
+
+      assert.strictEqual(createRes.statusCode, 201);
+      const createBody = JSON.parse(createRes.body);
+      const bundleId = createBody.bundle.id;
+
+      // Find the regular task (no stageOnComplete)
+      const regularTask = createBody.tasks.find((t: any) => t.templateTaskRef === 'regular');
+      assert.ok(regularTask);
+
+      // Mark regular task as done
+      const updateRes = await invoke('PUT', `/api/tasks/${regularTask.id}`, {
+        status: 'done',
+      });
+      assert.strictEqual(updateRes.statusCode, 200);
+
+      // Verify bundle stage is still "preparation"
+      const bundleRes = await invoke('GET', `/api/bundles/${bundleId}`);
+      assert.strictEqual(bundleRes.statusCode, 200);
+      const bundleBody = JSON.parse(bundleRes.body);
+      assert.strictEqual(bundleBody.bundle.stage, 'preparation');
+    });
+
+    it('task dates are correctly calculated from anchor date and offset days', async () => {
+      const template = await createTemplate(client, {
+        name: 'Date Calc Template',
+        type: 'test',
+        taskDefinitions: [
+          { refId: 'd-14', description: 'Two weeks before', offsetDays: -14 },
+          { refId: 'd-7', description: 'One week before', offsetDays: -7 },
+          { refId: 'd0', description: 'Anchor day', offsetDays: 0, isMilestone: true },
+          { refId: 'd3', description: 'Three days after', offsetDays: 3 },
+          { refId: 'd7', description: 'One week after', offsetDays: 7 },
+        ],
+      });
+
+      const res = await invoke('POST', '/api/bundles', {
+        title: 'Date Calc Bundle',
+        anchorDate: '2026-06-15',
+        templateId: template.id,
+      });
+
+      assert.strictEqual(res.statusCode, 201);
+      const body = JSON.parse(res.body);
+
+      const dates = body.tasks.map((t: any) => t.date).sort();
+      assert.deepStrictEqual(dates, ['2026-06-01', '2026-06-08', '2026-06-15', '2026-06-18', '2026-06-22']);
+    });
+  });
 });
