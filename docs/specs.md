@@ -161,8 +161,9 @@ Fields:
 - date: YYYY-MM-DD, required
 - status: "todo", "done", or "archived" - defaults to "todo"
 - comment: string, optional (may contain markdown links)
-- link: string, optional (URL associated with the task)
-- requiresLink: boolean, optional (if true, task cannot be marked done without a link)
+- instructionsUrl: string, optional (URL to instruction document, copied from template task definition)
+- link: string, optional (URL associated with the task, e.g., Luma event link)
+- requiredLinkName: string, optional (label like "Luma" - if set, task cannot be marked done until `link` is filled)
 - assigneeId: string, optional (user ID)
 - bundleId: string, optional (links task to a bundle)
 - source: "manual", "template", "recurring", or "telegram"
@@ -184,12 +185,16 @@ Fields:
 - description: string, optional (may contain markdown links)
 - templateId: string, optional
 - status: "active" or "archived" - defaults to "active"
-- links: array of { name: string, url: string }, optional
+- emoji: string, optional (inherited from template)
+- references: array of { name: string, url: string }, optional (fixed links inherited from template - process docs, server links)
+- bundleLinks: array of { name: string, url: string }, optional (slots to fill during execution - e.g., Luma URL, YouTube link)
 - tags: array of strings, optional (inherited from template)
 - createdAt: ISO timestamp
 - updatedAt: ISO timestamp
 
-The links array stores reference URLs associated with the bundle. Each entry has a display name and a URL. These come from template-defined link slots, Trello card attachments during migration, or can be added manually.
+The bundle has two kinds of links:
+- References: inherited from the template, pre-filled with fixed URLs (process docs, server links). Read-only in the bundle view.
+- Bundle links: empty slots defined by the template's `bundleLinkDefinitions`, filled during execution. Each entry has a display name and a URL. When a task with `requiredLinkName` has its `link` filled, the corresponding bundle link is also updated.
 
 DynamoDB keys: PK = BUNDLE#{id}, SK = BUNDLE#{id}
 
@@ -199,6 +204,7 @@ Fields:
 - id: UUID, auto-generated
 - name: string, required
 - type: string, required (e.g., "newsletter", "podcast", "webinar")
+- emoji: string, optional (e.g., "📰", "🎙️")
 - tags: array of strings, optional
 - defaultAssigneeId: string, optional (default user for tasks)
 - references: array of { name: string, url: string }, optional (fixed links same for every bundle - process docs, server links)
@@ -218,7 +224,7 @@ Fields:
 - createdAt: ISO timestamp
 - updatedAt: ISO timestamp
 
-The instructionsUrl field stores a link to a Google Doc or other document describing how to perform the task. When a template is instantiated, the instructionsUrl is stored in the created task's comment field.
+The instructionsUrl field stores a link to a Google Doc or other document describing how to perform the task. When a template is instantiated, the instructionsUrl is copied to the created task's `instructionsUrl` field (not the comment field).
 
 DynamoDB keys: PK = TEMPLATE#{id}, SK = TEMPLATE#{id}
 
@@ -243,8 +249,10 @@ Fields:
 - filename: string, required
 - category: "image", "invoice", or "document"
 - tags: array of strings, optional
-- s3Key: string, required
+- storagePath: string, required (relative path in local filesystem, e.g., "uploads/{taskId}/{filename}")
 - createdAt: ISO timestamp
+
+Files are stored on the local filesystem under an `uploads/` directory (configurable via environment variable `UPLOAD_DIR`). In Lambda deployment, this maps to `/tmp/uploads` or an EFS mount. For local development, files are stored in `./uploads/`.
 
 DynamoDB keys: PK = FILE#{id}, SK = FILE#{id}
 GSI: TaskIndex with PK = taskId, SK = FILE#{id}
@@ -257,33 +265,33 @@ All endpoints accept and return JSON. All endpoints are auth-gated - unauthentic
 
 - `GET /api/tasks?date=YYYY-MM-DD` - list tasks for a specific date
 - `GET /api/tasks?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD` - list tasks in a date range
-- `POST /api/tasks` - create a task (body: { description, date, comment?, link?, requiresLink?, source?, bundleId?, assigneeId?, tags? })
+- `POST /api/tasks` - create a task (body: { description, date, comment?, instructionsUrl?, link?, requiredLinkName?, source?, bundleId?, assigneeId?, tags? })
 - `GET /api/tasks/:id` - get a single task
-- `PUT /api/tasks/:id` - update a task (body: subset of { description, date, status, comment, link, assigneeId, tags })
+- `PUT /api/tasks/:id` - update a task (body: subset of { description, date, status, comment, instructionsUrl, link, assigneeId, tags })
 - `DELETE /api/tasks/:id` - archive a task (soft delete)
 
 ### Bundles API
 
 - `GET /api/bundles` - list all bundles
-- `POST /api/bundles` - create a bundle (body: { title, anchorDate, description?, templateId?, links? })
+- `POST /api/bundles` - create a bundle (body: { title, anchorDate, description?, templateId?, emoji?, references?, bundleLinks?, tags? })
 - `GET /api/bundles/:id` - get a single bundle
-- `PUT /api/bundles/:id` - update a bundle (body: subset of { title, description, anchorDate, status, links, tags })
+- `PUT /api/bundles/:id` - update a bundle (body: subset of { title, description, anchorDate, status, emoji, references, bundleLinks, tags })
 - `PUT /api/bundles/:id/archive` - archive a bundle
 - `DELETE /api/bundles/:id` - permanently delete (only archived bundles)
 - `GET /api/bundles/:id/tasks` - list all tasks for a bundle
 
-The links field is an array of objects: [{ name: "Overview doc", url: "https://..." }, ...].
-When creating or updating a bundle, the links array replaces the entire existing links array.
+The references and bundleLinks fields are arrays of objects: [{ name: "Overview doc", url: "https://..." }, ...].
+When creating or updating a bundle, each array replaces the entire existing array.
 
 ### Templates API
 
 - `GET /api/templates` - list all templates
-- `POST /api/templates` - create a template (body: { name, type, tags?, defaultAssigneeId?, linkDefinitions?, taskDefinitions })
+- `POST /api/templates` - create a template (body: { name, type, emoji?, tags?, defaultAssigneeId?, references?, bundleLinkDefinitions?, triggerType?, triggerSchedule?, triggerLeadDays?, taskDefinitions })
 - `GET /api/templates/:id` - get a single template
-- `PUT /api/templates/:id` - update a template (body: subset of { name, type, tags, defaultAssigneeId, linkDefinitions, taskDefinitions })
+- `PUT /api/templates/:id` - update a template (body: subset of { name, type, emoji, tags, defaultAssigneeId, references, bundleLinkDefinitions, triggerType, triggerSchedule, triggerLeadDays, taskDefinitions })
 - `DELETE /api/templates/:id` - delete a template
 
-Each task definition: { refId, description, offsetDays, isMilestone?, assigneeId?, instructionsUrl? }.
+Each task definition: { refId, description, offsetDays, isMilestone?, assigneeId?, instructionsUrl?, requiredLinkName?, requiresFile? }.
 
 ### Recurring API
 
@@ -295,11 +303,12 @@ Each task definition: { refId, description, offsetDays, isMilestone?, assigneeId
 
 ### Files API
 
-- `POST /api/files` - upload a file (multipart: file, taskId, category?, tags?)
+- `POST /api/files` - upload a file (multipart: file, taskId, category?, tags?) - stores file on local filesystem
 - `GET /api/files?taskId=...` - list files for a task
 - `GET /api/files?category=...&tag=...` - list files with filters
 - `GET /api/files/:id` - get file metadata
-- `DELETE /api/files/:id` - delete a file
+- `GET /api/files/:id/download` - download the actual file
+- `DELETE /api/files/:id` - delete a file (removes from filesystem and database)
 
 ## UI
 
@@ -321,11 +330,13 @@ Compact Trello-style display. Each task shows:
 - Description (with markdown links rendered as clickable anchors)
 - Bundle link (clickable, navigates to bundle detail) or "ad-hoc" badge
 - Status checkbox
-- Comment (with markdown links)
+- Instructions URL (clickable link to instruction document, if present)
 - Assignee
 - Completion requirements (if any):
-  - Required link: inline input field for the URL, pre-filled if the bundle link already has a value. The link name (e.g., "Luma") is shown as the field label. Task checkbox is disabled until the link is filled.
+  - Required link: inline input field for the URL, pre-filled if the bundle link already has a value. The link name (e.g., "Luma") is shown as the field label. Task checkbox is disabled until the link is filled. When the link is saved, it also syncs to the bundle's bundleLinks array.
   - Required file: upload button. Task checkbox is disabled until the file is uploaded.
+
+Note: comments are not shown in the task list view. They are low priority and mostly for ad-hoc tasks.
 
 Filtering by: date/date range, tag, bundle, template, user.
 
@@ -337,21 +348,26 @@ Cards ordered/grouped by template type. Each card shows title, anchor date, desc
 
 ### Bundle Detail View
 
-- Bundle title and anchor date
+- Bundle title, emoji, and anchor date
 - Description (with markdown links)
-- Links section: template-defined links + custom links. Inline form to add new links. Each link has a remove button.
-- Tasks table: all bundle tasks with description, date, status toggle, comment, and assignee
-  - Tasks with a required link show an inline input field linked to the corresponding bundle link. Filling it updates the bundle's links array. Checkbox disabled until filled.
+- References section: read-only links inherited from template (process docs, server links)
+- Bundle links section: fillable link slots defined by template. Inline input for each. Users can also add custom extra links.
+- Tasks table: all bundle tasks with description, date, status toggle, instructions URL, and assignee
+  - Tasks with a required link show an inline input field linked to the corresponding bundle link. Filling it updates the bundle's bundleLinks array. Checkbox disabled until filled.
   - Tasks with a required file show an upload button. Checkbox disabled until file is uploaded.
+  - Task comments are not shown in the bundle detail view.
 
 ### Templates View
 
 Cards (not a table). Each card shows name, type, tags, and task count. Clicking opens the template editor.
 
 Template editor:
-- Edit name, type, tags, default assignee
+- Edit name, type, emoji, tags, default assignee
+- Trigger config: trigger type (automatic/manual), cron expression, lead days
+- References: manage fixed links (add/edit/remove)
+- Bundle link definitions: manage link slot names (add/edit/remove)
 - Task definitions list with drag-and-drop reordering
-- Editing offset days, assignee overrides, milestone flag per task
+- Editing offset days, assignee overrides, milestone flag, requiredLinkName, requiresFile per task
 
 ### Recurring View
 
@@ -396,11 +412,28 @@ Pattern: item name contains `[text](url)` - the first such link is extracted as 
 Example input: "Create a MailChimp campaign ([link](https://docs.google.com/...))"
 Result: description = "Create a MailChimp campaign", instructionsUrl = "https://docs.google.com/..."
 
-The extracted instructionsUrl is stored on the template task definition. When tasks are instantiated, the URL is placed in the task comment field. For active card tasks (not templates), the instructionsUrl is stored directly in the task comment field.
+The extracted instructionsUrl is stored on the template task definition. When tasks are instantiated, the URL is copied to the task's `instructionsUrl` field. For active card tasks (not templates), the instructionsUrl is stored directly in the task's `instructionsUrl` field.
 
 ### Bundle Links from Attachments
 
 Trello cards have an attachments array. Non-image attachments (non-Trello URLs) are extracted as bundle links: { name: attachment.name, url: attachment.url }. Trello-hosted attachments (URLs matching trello.com/1/cards/) are skipped.
+
+## Automatic Bundle Creation
+
+Templates with `triggerType: "automatic"` have bundles created automatically on a schedule. The `triggerSchedule` (cron expression) defines when to create bundles, and `triggerLeadDays` defines how many days before the anchor date the bundle should be created.
+
+Implementation: AWS EventBridge Scheduler rules that invoke the Lambda on a schedule. For local development, a simple cron runner script that polls and creates bundles.
+
+When a bundle is auto-created, a notification is generated (e.g., "Newsletter bundle auto-created for Mar 15") that appears on the home dashboard.
+
+## Users
+
+Users are manually created via a seed script. No signup flow needed. Three initial users:
+- Grace: community manager, does most of the work
+- Valeriia: handles newsletter content, social media
+- Alexey: project owner, handles podcast uploads, Maven content
+
+All users can see all tasks. Default view shows tasks assigned to the current user.
 
 ## Future Extensions
 
