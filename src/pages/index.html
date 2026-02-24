@@ -982,44 +982,6 @@
       flex-wrap: wrap;
     }
 
-    .badge-anchor-date {
-      display: inline-block;
-      font-size: 10px;
-      padding: 1px 6px;
-      border-radius: 8px;
-      background: #fef9e7;
-      color: #b7950b;
-      font-weight: 600;
-    }
-
-    .badge-stage {
-      display: inline-block;
-      font-size: 10px;
-      padding: 1px 8px;
-      border-radius: 8px;
-      font-weight: 600;
-    }
-
-    .badge-stage.preparation {
-      background: #d6eaf8;
-      color: #1a5276;
-    }
-
-    .badge-stage.announced {
-      background: #fef9e7;
-      color: #b7950b;
-    }
-
-    .badge-stage.after-event {
-      background: #fdebd0;
-      color: #ca6f1e;
-    }
-
-    .badge-stage.done {
-      background: #eafaf1;
-      color: #1e8449;
-    }
-
     /* ── Dashboard header bar ─────────────────────────────── */
 
     .dashboard-header {
@@ -1053,6 +1015,209 @@
     .user-picker {
       font-size: 13px;
       padding: 4px 8px;
+    }
+
+    /* ── Stage badges (shared by dashboard and bundle detail) ── */
+
+    .badge-stage {
+      display: inline-block;
+      font-size: 11px;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-weight: 600;
+      text-transform: capitalize;
+    }
+
+    .badge-stage.preparation {
+      background: #fff3e0;
+      color: #e65100;
+    }
+
+    .badge-stage.announced {
+      background: #e3f2fd;
+      color: #1565c0;
+    }
+
+    .badge-stage.after-event {
+      background: #f3e5f5;
+      color: #7b1fa2;
+    }
+
+    .badge-stage.done {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+
+    /* Status badge */
+    .badge-status {
+      display: inline-block;
+      font-size: 11px;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-weight: 600;
+    }
+
+    .badge-status.active {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+
+    .badge-status.archived {
+      background: #eceff1;
+      color: #78909c;
+    }
+
+    /* Anchor date badge */
+    .badge-anchor-date {
+      display: inline-block;
+      font-size: 11px;
+      padding: 2px 10px;
+      border-radius: 12px;
+      background: #f5f5f5;
+      color: #555;
+      font-weight: 600;
+    }
+
+    /* Bundle detail header row */
+    .bundle-detail-badges {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    /* Stage transition buttons */
+    .btn-stage {
+      background: #ecf0f1;
+      color: #2c3e50;
+      padding: 4px 12px;
+      border: 1px solid #bdc3c7;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.2s;
+    }
+
+    .btn-stage:hover {
+      background: #d5dbdb;
+    }
+
+    /* References section */
+    .references-section {
+      background: #fff;
+      padding: 16px 20px;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      margin-bottom: 16px;
+    }
+
+    .references-section h3 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #2c3e50;
+    }
+
+    .reference-link {
+      display: block;
+      color: #2471a3;
+      text-decoration: none;
+      font-size: 13px;
+      padding: 3px 0;
+    }
+
+    .reference-link:hover {
+      text-decoration: underline;
+    }
+
+    /* Bundle links section (editable) */
+    .bundle-links-editable {
+      background: #fff;
+      padding: 16px 20px;
+      border-radius: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      margin-bottom: 16px;
+    }
+
+    .bundle-links-editable h3 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #2c3e50;
+    }
+
+    .bundle-link-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .bundle-link-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #555;
+      min-width: 100px;
+    }
+
+    .bundle-link-url-input {
+      flex: 1;
+      padding: 5px 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 13px;
+      font-family: inherit;
+      outline: none;
+    }
+
+    .bundle-link-url-input:focus {
+      border-color: #3498db;
+    }
+
+    .btn-save-link {
+      background: #27ae60;
+      color: #fff;
+      padding: 4px 10px;
+      border: none;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.2s;
+    }
+
+    .btn-save-link:hover {
+      background: #219a52;
+    }
+
+    .add-link-form {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #eee;
+    }
+
+    /* Bundle detail tasks table */
+    .bundle-tasks-table th,
+    .bundle-tasks-table td {
+      padding: 6px 10px;
+      font-size: 13px;
+    }
+
+    .bundle-tasks-table th {
+      font-size: 11px;
+    }
+
+    .bundle-tasks-table tr.task-done td {
+      opacity: 0.6;
+    }
+
+    .bundle-tasks-table tr.task-done td.task-description {
+      text-decoration: line-through;
     }
   </style>
 </head>
