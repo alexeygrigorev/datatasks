@@ -11,6 +11,8 @@ import { handleTelegramWebhook } from './routes/telegram';
 import { handleEmailWebhook } from './routes/email';
 import { handleNotificationRoutes } from './routes/notifications';
 import { handleCronRoutes } from './routes/cron';
+import { handleAuthRoutes, extractToken } from './routes/auth';
+import { getSession } from './db/sessions';
 import {
   createTask,
   getTask,
@@ -26,6 +28,20 @@ import { listFilesByTask } from './db/files';
 import type { LambdaEvent, LambdaResponse, Task } from './types';
 
 const JSON_HEADERS: Record<string, string> = { 'Content-Type': 'application/json' };
+
+// Routes that do NOT require authentication
+const AUTH_EXEMPT_PATHS = new Set([
+  '/',
+  '/api/health',
+  '/api/auth/login',
+]);
+
+function isAuthExempt(method: string, path: string): boolean {
+  if (AUTH_EXEMPT_PATHS.has(path)) return true;
+  // Static assets
+  if (method === 'GET' && path.startsWith('/public/')) return true;
+  return false;
+}
 
 function jsonResponse(statusCode: number, body: unknown): LambdaResponse {
   return {
@@ -60,6 +76,30 @@ async function route(event: LambdaEvent, client: DynamoDBDocumentClient): Promis
   const reqPath = event.path || '/';
 
   try {
+    // ── Auth routes (exempt from middleware) ─────────────────────
+    if (reqPath.startsWith('/api/auth') || reqPath === '/api/me') {
+      const result = await handleAuthRoutes(event);
+      if (result) return result;
+    }
+
+    // ── Auth middleware ───────────────────────────────────────────
+    // All /api/* routes (except exempt ones) require a valid session.
+    // In test mode (NODE_ENV=test), auth can be bypassed with SKIP_AUTH=true.
+    const skipAuth = process.env.NODE_ENV === 'test' && process.env.SKIP_AUTH === 'true';
+    if (!skipAuth && reqPath.startsWith('/api/') && !isAuthExempt(method, reqPath)) {
+      const token = extractToken(event);
+      if (!token) {
+        return jsonResponse(401, { error: 'Unauthorized' });
+      }
+      const session = await getSession(client, token);
+      if (!session) {
+        return jsonResponse(401, { error: 'Unauthorized' });
+      }
+      // Attach userId to event headers for downstream use
+      if (!event.headers) event.headers = {};
+      event.headers['x-user-id'] = session.userId;
+    }
+
     // GET / — serve SPA HTML
     if (method === 'GET' && reqPath === '/') {
       const htmlPath = path.join(__dirname, 'pages', 'index.html');
@@ -311,7 +351,8 @@ async function route(event: LambdaEvent, client: DynamoDBDocumentClient): Promis
     // ── Notification routes ─────────────────────────────────────
 
     if (reqPath.startsWith('/api/notifications')) {
-      const result = await handleNotificationRoutes(reqPath, method, event.body || null);
+      const userId = event.headers?.['x-user-id'] || undefined;
+      const result = await handleNotificationRoutes(reqPath, method, event.body || null, userId);
       if (result) return result;
     }
 

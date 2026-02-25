@@ -1223,16 +1223,33 @@
     .bundle-tasks-table tr.task-done td.task-description {
       text-decoration: line-through;
     }
+
+    /* ── Sign-in form ──────────────────────────────────────── */
+
+    .signin-container {
+      max-width: 360px;
+      margin: 80px auto 0;
+    }
+
+    /* Nav sign-out button spacing */
+    #signout-btn {
+      margin-left: auto;
+    }
+
+    /* Hide nav links initially until authenticated */
+    .nav-hidden {
+      display: none !important;
+    }
   </style>
 </head>
 <body>
   <nav>
     <a href="#/" class="brand">DataTasks</a>
-    <a href="#/">Home</a>
-    <a href="#/tasks">Tasks</a>
-    <a href="#/bundles">Bundles</a>
-    <a href="#/templates">Templates</a>
-    <a href="#/recurring">Recurring</a>
+    <a href="#/" class="nav-link" style="display:none;">Home</a>
+    <a href="#/tasks" class="nav-link" style="display:none;">Tasks</a>
+    <a href="#/bundles" class="nav-link" style="display:none;">Bundles</a>
+    <a href="#/templates" class="nav-link" style="display:none;">Templates</a>
+    <a href="#/recurring" class="nav-link" style="display:none;">Recurring</a>
   </nav>
   <div id="app"></div>
   <script src="/public/api.js"></script>

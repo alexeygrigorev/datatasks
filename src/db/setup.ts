@@ -10,6 +10,7 @@ const TABLE_TEMPLATES = 'Templates';
 const TABLE_USERS = 'Users';
 const TABLE_FILES = 'Files';
 const TABLE_NOTIFICATIONS = 'Notifications';
+const TABLE_SESSIONS = 'Sessions';
 
 /**
  * Create all application tables (Tasks, Bundles, Templates) with GSIs.
@@ -129,6 +130,18 @@ async function createTables(client: DynamoDBDocumentClient): Promise<void> {
       ],
       BillingMode: 'PAY_PER_REQUEST' as const,
     },
+    {
+      TableName: TABLE_SESSIONS,
+      KeySchema: [
+        { AttributeName: 'PK', KeyType: 'HASH' as const },
+        { AttributeName: 'SK', KeyType: 'RANGE' as const },
+      ],
+      AttributeDefinitions: [
+        { AttributeName: 'PK', AttributeType: 'S' as const },
+        { AttributeName: 'SK', AttributeType: 'S' as const },
+      ],
+      BillingMode: 'PAY_PER_REQUEST' as const,
+    },
   ];
 
   for (const def of tableDefinitions) {
@@ -147,7 +160,7 @@ async function createTables(client: DynamoDBDocumentClient): Promise<void> {
  * Delete all application tables. Used for test cleanup.
  */
 async function deleteTables(client: DynamoDBDocumentClient): Promise<void> {
-  const tableNames = [TABLE_TASKS, TABLE_BUNDLES, TABLE_TEMPLATES, TABLE_USERS, TABLE_FILES, TABLE_NOTIFICATIONS];
+  const tableNames = [TABLE_TASKS, TABLE_BUNDLES, TABLE_TEMPLATES, TABLE_USERS, TABLE_FILES, TABLE_NOTIFICATIONS, TABLE_SESSIONS];
 
   for (const tableName of tableNames) {
     try {
@@ -170,4 +183,5 @@ export {
   TABLE_USERS,
   TABLE_FILES,
   TABLE_NOTIFICATIONS,
+  TABLE_SESSIONS,
 };

@@ -12,7 +12,7 @@ const JSON_HEADERS: Record<string, string> = { 'Content-Type': 'application/json
 /**
  * Handle all /api/notifications routes.
  */
-async function handleNotificationRoutes(path: string, method: string, _rawBody: string | null): Promise<LambdaResponse | null> {
+async function handleNotificationRoutes(path: string, method: string, _rawBody: string | null, userId?: string): Promise<LambdaResponse | null> {
   if (!path.startsWith('/api/notifications')) {
     return null;
   }
@@ -24,7 +24,7 @@ async function handleNotificationRoutes(path: string, method: string, _rawBody: 
 
     // Route: GET /api/notifications
     if ((suffix === '' || suffix === '/') && method === 'GET') {
-      const notifications = await listUndismissedNotifications(client);
+      const notifications = await listUndismissedNotifications(client, userId);
       return {
         statusCode: 200,
         headers: JSON_HEADERS,

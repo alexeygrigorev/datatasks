@@ -115,6 +115,15 @@ export interface User {
   name: string;
   email: string;
   createdAt: string;
+  passwordHash?: string;
+}
+
+// --- Session ---
+
+export interface Session {
+  token: string;
+  userId: string;
+  createdAt: string;
 }
 
 // --- Notification ---
@@ -124,6 +133,7 @@ export interface Notification {
   message: string;
   bundleId?: string;
   templateId?: string;
+  userId?: string;
   dismissed: boolean;
   createdAt: string;
 }
