@@ -401,6 +401,111 @@ test.describe('Bundle detail view (issue #27)', () => {
     });
   });
 
+  // ── Scenario: Back button navigates to home dashboard ──
+  test.describe('Scenario: Back button navigates to home dashboard (issue #31)', () => {
+    let bundleId;
+    const suffix = uid();
+
+    test.beforeAll(async ({ request }) => {
+      const res = await request.post('/api/bundles', {
+        data: {
+          title: 'Back btn test ' + suffix,
+          anchorDate: '2026-04-20',
+        },
+      });
+      expect(res.status()).toBe(201);
+      const body = await res.json();
+      bundleId = body.bundle.id;
+    });
+
+    test.afterAll(async ({ request }) => {
+      if (bundleId) {
+        await archiveAndDelete(request, bundleId);
+      }
+    });
+
+    test('back button label reads "← Back to Home"', async ({ page }) => {
+      await page.goto('/#/bundles');
+      await page.waitForSelector('.bundle-card');
+
+      const card = page.locator('.bundle-card', { hasText: 'Back btn test ' + suffix });
+      await card.locator('.bundle-card-title').click();
+
+      await page.waitForSelector('[data-testid="stage-badge"]');
+
+      const backBtn = page.locator('.btn-back');
+      await expect(backBtn).toHaveText('\u2190 Back to Home');
+    });
+
+    test('clicking back button navigates to #/', async ({ page }) => {
+      await page.goto('/#/bundles');
+      await page.waitForSelector('.bundle-card');
+
+      const card = page.locator('.bundle-card', { hasText: 'Back btn test ' + suffix });
+      await card.locator('.bundle-card-title').click();
+
+      await page.waitForSelector('[data-testid="stage-badge"]');
+
+      const backBtn = page.locator('.btn-back');
+      await backBtn.click();
+
+      // URL hash should now be #/
+      await page.waitForFunction(() => location.hash === '#/');
+      expect(page.url()).toMatch(/#\/$/);
+    });
+
+    test('full round-trip: Home -> bundle card -> bundle detail -> back -> Home', async ({ page }) => {
+      // Start at home dashboard
+      await page.goto('/#/');
+      await page.waitForSelector('.dashboard-bundle-card');
+
+      // Click bundle card from home page
+      const card = page.locator('.dashboard-bundle-card', { hasText: 'Back btn test ' + suffix });
+      await card.click();
+
+      // Wait for bundle detail
+      await page.waitForSelector('[data-testid="stage-badge"]');
+      expect(page.url()).toMatch(/#\/bundles/);
+
+      // Click back button
+      const backBtn = page.locator('.btn-back');
+      await expect(backBtn).toHaveText('\u2190 Back to Home');
+      await backBtn.click();
+
+      // Should be back on home dashboard
+      await page.waitForFunction(() => location.hash === '#/');
+      expect(page.url()).toMatch(/#\/$/);
+
+      // Home dashboard should be visible (bundle cards column)
+      await page.waitForSelector('.dashboard-bundle-card');
+    });
+
+    test('visiting #/bundles after back-to-home shows list, not stale detail', async ({ page }) => {
+      // Navigate to bundle detail
+      await page.goto('/#/bundles');
+      await page.waitForSelector('.bundle-card');
+
+      const card = page.locator('.bundle-card', { hasText: 'Back btn test ' + suffix });
+      await card.locator('.bundle-card-title').click();
+      await page.waitForSelector('[data-testid="stage-badge"]');
+
+      // Click back to home
+      const backBtn = page.locator('.btn-back');
+      await backBtn.click();
+      await page.waitForFunction(() => location.hash === '#/');
+
+      // Now navigate to #/bundles via hash
+      await page.goto('/#/bundles');
+      await page.waitForSelector('.bundle-card');
+
+      // Should show bundles list, not a stale bundle detail
+      const stageBadge = page.locator('[data-testid="stage-badge"]');
+      await expect(stageBadge).not.toBeVisible();
+      const bundleCards = page.locator('.bundle-card');
+      expect(await bundleCards.count()).toBeGreaterThan(0);
+    });
+  });
+
   // ── Tasks table: instructions URL, assignee, no comments ──
   test.describe('Tasks table features', () => {
     let bundleId;

@@ -1229,10 +1229,10 @@
   function renderBundleDetail(bundleId) {
     var backBtn = document.createElement('button');
     backBtn.className = 'btn-back';
-    backBtn.textContent = '\u2190 Back to Bundles';
+    backBtn.textContent = '\u2190 Back to Home';
     backBtn.addEventListener('click', function () {
       currentBundleId = null;
-      renderBundles();
+      location.hash = '#/';
     });
     app.appendChild(backBtn);
 
