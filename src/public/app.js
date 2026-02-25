@@ -1370,7 +1370,8 @@
 
       currentBundleLinks.forEach(function (bl, idx) {
         var row = document.createElement('div');
-        row.className = 'bundle-link-row';
+        var isEmpty = !bl.url || !bl.url.trim();
+        row.className = 'bundle-link-row' + (isEmpty ? ' bundle-link-row--empty' : '');
 
         var label = document.createElement('span');
         label.className = 'bundle-link-label';
@@ -1463,39 +1464,41 @@
     var container = document.getElementById('bundle-tasks-table');
     if (!container) return;
 
+    container.innerHTML = '';
+
     if (tasks.length === 0) {
       container.innerHTML = '<div class="empty-state">No tasks for this bundle.</div>';
       return;
     }
 
-    var table = document.createElement('table');
-    table.className = 'bundle-tasks-table';
+    // Keep backward-compat class on the container div
+    container.className = 'bundle-tasks-table task-checklist';
 
-    var thead = document.createElement('thead');
-    thead.innerHTML = '<tr>' +
-      '<th style="width:30px;"></th>' +
-      '<th>Description</th>' +
-      '<th>Date</th>' +
-      '<th>Assignee</th>' +
-      '<th style="width:30px;">Info</th>' +
-      '<th>Link</th>' +
-      '</tr>';
-    table.appendChild(thead);
+    // Split tasks: active (not done) sorted by date, done at the bottom
+    var activeTasks = tasks.filter(function (t) { return t.status !== 'done'; });
+    var doneTasks = tasks.filter(function (t) { return t.status === 'done'; });
 
-    var tbody = document.createElement('tbody');
-
-    tasks.forEach(function (t) {
+    function buildTaskRow(t) {
       var isDone = t.status === 'done';
       var hasRequiredLink = !!t.requiredLinkName;
       var linkFilled = !!(t.link && t.link.trim());
       var checkboxDisabled = hasRequiredLink && !linkFilled;
+      // A task is a milestone if it has stageOnComplete set
+      var isMilestone = !!t.stageOnComplete;
 
-      var tr = document.createElement('tr');
-      tr.className = isDone ? 'task-done' : '';
-      tr.setAttribute('data-task-row', t.id);
+      var rowClasses = 'task-checklist-row';
+      if (isDone) rowClasses += ' task-done';
+      if (isMilestone) rowClasses += ' milestone-task-row';
 
-      // Checkbox cell
-      var tdCheck = document.createElement('td');
+      var row = document.createElement('div');
+      row.className = rowClasses;
+      row.setAttribute('data-task-row', t.id);
+      if (isMilestone) row.setAttribute('data-testid', 'milestone-task-row');
+
+      // ── Checkbox column ──
+      var checkboxCol = document.createElement('div');
+      checkboxCol.className = 'task-checklist-checkbox-col';
+
       var checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.className = 'task-status-checkbox';
@@ -1511,13 +1514,56 @@
           checkbox.checked = !checkbox.checked;
         });
       });
-      tdCheck.appendChild(checkbox);
-      tr.appendChild(tdCheck);
+      checkboxCol.appendChild(checkbox);
+      row.appendChild(checkboxCol);
 
-      // Description cell
-      var tdDesc = document.createElement('td');
-      tdDesc.className = 'task-description';
-      tdDesc.innerHTML = renderMarkdownLinks(t.description || '');
+      // ── Body column ──
+      var body = document.createElement('div');
+      body.className = 'task-checklist-body';
+
+      // Main line: description + instructions icon
+      var mainLine = document.createElement('div');
+      mainLine.className = 'task-checklist-main-line';
+
+      var descSpan = document.createElement('span');
+      descSpan.className = 'task-description';
+      descSpan.innerHTML = renderMarkdownLinks(t.description || '');
+      mainLine.appendChild(descSpan);
+
+      if (t.instructionsUrl) {
+        var instrLink = document.createElement('a');
+        instrLink.className = 'instructions-link';
+        instrLink.href = t.instructionsUrl;
+        instrLink.target = '_blank';
+        instrLink.rel = 'noopener';
+        instrLink.title = 'Instructions';
+        instrLink.innerHTML = '&#x1F4CB;';
+        mainLine.appendChild(instrLink);
+      }
+
+      body.appendChild(mainLine);
+
+      // Meta line: date + assignee
+      var metaLine = document.createElement('div');
+      metaLine.className = 'task-checklist-meta';
+
+      if (t.date) {
+        var dateSpan = document.createElement('span');
+        dateSpan.className = 'task-meta-date';
+        dateSpan.textContent = t.date;
+        metaLine.appendChild(dateSpan);
+      }
+
+      if (t.assigneeId && usersMap[t.assigneeId]) {
+        var assigneeBadge = document.createElement('span');
+        assigneeBadge.className = 'badge-assignee';
+        assigneeBadge.textContent = usersMap[t.assigneeId].name;
+        metaLine.appendChild(assigneeBadge);
+      }
+
+      if (metaLine.hasChildNodes()) {
+        body.appendChild(metaLine);
+      }
 
       // Required link input inline under description
       if (hasRequiredLink) {
@@ -1570,58 +1616,29 @@
         })(t));
         wrapper.appendChild(saveReqBtn);
 
-        tdDesc.appendChild(wrapper);
+        body.appendChild(wrapper);
       }
-      tr.appendChild(tdDesc);
 
-      // Date cell
-      var tdDate = document.createElement('td');
-      tdDate.textContent = t.date || '';
-      tr.appendChild(tdDate);
+      row.appendChild(body);
+      return row;
+    }
 
-      // Assignee cell
-      var tdAssignee = document.createElement('td');
-      if (t.assigneeId && usersMap[t.assigneeId]) {
-        var assigneeBadge = document.createElement('span');
-        assigneeBadge.className = 'badge-assignee';
-        assigneeBadge.textContent = usersMap[t.assigneeId].name;
-        tdAssignee.appendChild(assigneeBadge);
-      }
-      tr.appendChild(tdAssignee);
-
-      // Instructions URL cell
-      var tdInstructions = document.createElement('td');
-      if (t.instructionsUrl) {
-        var instrLink = document.createElement('a');
-        instrLink.className = 'instructions-link';
-        instrLink.href = t.instructionsUrl;
-        instrLink.target = '_blank';
-        instrLink.rel = 'noopener';
-        instrLink.title = 'Instructions';
-        instrLink.innerHTML = '&#x1F4CB;';
-        tdInstructions.appendChild(instrLink);
-      }
-      tr.appendChild(tdInstructions);
-
-      // Link cell (for non-required links, show the link if available)
-      var tdLink = document.createElement('td');
-      if (!hasRequiredLink && t.link) {
-        var linkAnchor = document.createElement('a');
-        linkAnchor.href = t.link;
-        linkAnchor.target = '_blank';
-        linkAnchor.rel = 'noopener';
-        linkAnchor.textContent = 'Link';
-        linkAnchor.style.fontSize = '12px';
-        tdLink.appendChild(linkAnchor);
-      }
-      tr.appendChild(tdLink);
-
-      tbody.appendChild(tr);
+    // Render active tasks
+    activeTasks.forEach(function (t) {
+      container.appendChild(buildTaskRow(t));
     });
 
-    table.appendChild(tbody);
-    container.innerHTML = '';
-    container.appendChild(table);
+    // Render done tasks in a separate section
+    if (doneTasks.length > 0) {
+      var doneHeading = document.createElement('div');
+      doneHeading.className = 'task-section-heading';
+      doneHeading.textContent = 'Done (' + doneTasks.length + ')';
+      container.appendChild(doneHeading);
+
+      doneTasks.forEach(function (t) {
+        container.appendChild(buildTaskRow(t));
+      });
+    }
   }
 
   // ── Templates View ──────────────────────────────────────────────
