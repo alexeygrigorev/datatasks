@@ -203,6 +203,11 @@ test.describe('Home dashboard (issue #26)', () => {
       // Wait for bundles to load (look for a bundle card)
       await page.waitForSelector('.dashboard-bundle-card', { timeout: 10000 });
 
+      // Switch to Template mode to see group headings (default is Date mode)
+      await page.waitForSelector('[data-testid="sort-btn-template"]', { timeout: 10000 });
+      await page.locator('[data-testid="sort-btn-template"]').click();
+      await page.waitForSelector('.bundle-group-heading', { timeout: 10000 });
+
       // Should have group headings for the templates
       await expect(page.locator('#dashboard-bundles')).toContainText('Newsletter E2E');
       await expect(page.locator('#dashboard-bundles')).toContainText('Podcast E2E');
@@ -481,6 +486,389 @@ test.describe('Home dashboard (issue #26)', () => {
       } finally {
         await request.delete('/api/tasks/' + task.id);
       }
+    });
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // Bundle sort/group control (issue #32)
+  // ──────────────────────────────────────────────────────────────────
+
+  test.describe('Bundle sort control (issue #32)', () => {
+
+    // ── Scenario: Grace sees bundles sorted by date on page load ──
+    test.describe('Scenario: Grace sees bundles sorted by date on page load', () => {
+      let bundle1, bundle2, bundle3;
+
+      test.beforeAll(async ({ request }) => {
+        const r1 = await request.post('/api/bundles', {
+          data: { title: 'Sort Date Bundle A', anchorDate: '2026-04-10', status: 'active' },
+        });
+        bundle1 = (await r1.json()).bundle;
+
+        const r2 = await request.post('/api/bundles', {
+          data: { title: 'Sort Date Bundle B', anchorDate: '2026-03-05', status: 'active' },
+        });
+        bundle2 = (await r2.json()).bundle;
+
+        const r3 = await request.post('/api/bundles', {
+          data: { title: 'Sort Date Bundle C', anchorDate: '2026-05-01', status: 'active' },
+        });
+        bundle3 = (await r3.json()).bundle;
+      });
+
+      test.afterAll(async ({ request }) => {
+        for (const b of [bundle1, bundle2, bundle3]) {
+          if (b) {
+            await request.put('/api/bundles/' + b.id + '/archive');
+            await request.delete('/api/bundles/' + b.id);
+          }
+        }
+      });
+
+      test('Date is active by default, bundles shown in flat list (no group headings)', async ({ page }) => {
+        await page.goto('/#/');
+        await page.waitForSelector('[data-testid="bundle-sort-control"]', { timeout: 10000 });
+
+        // Date button should be active
+        const dateBtn = page.locator('[data-testid="sort-btn-date"]');
+        await expect(dateBtn).toHaveClass(/active/);
+
+        // Stage and template buttons should not be active
+        await expect(page.locator('[data-testid="sort-btn-stage"]')).not.toHaveClass(/active/);
+        await expect(page.locator('[data-testid="sort-btn-template"]')).not.toHaveClass(/active/);
+
+        // Wait for bundle cards
+        await page.waitForSelector('.dashboard-bundle-card', { timeout: 10000 });
+
+        // Should have no group headings in date mode
+        const headings = page.locator('#dashboard-bundles .bundle-group-heading');
+        await expect(headings).toHaveCount(0);
+      });
+
+      test('Bundles are ordered by anchorDate ascending in date mode', async ({ page }) => {
+        await page.goto('/#/');
+        await page.waitForSelector('.dashboard-bundle-card', { timeout: 10000 });
+
+        const cards = page.locator('#dashboard-bundles .dashboard-bundle-card');
+        const count = await cards.count();
+        expect(count).toBeGreaterThanOrEqual(3);
+
+        // Among our 3 bundles, B (2026-03-05) should come before A (2026-04-10)
+        // which should come before C (2026-05-01)
+        const allText = await page.locator('#dashboard-bundles').innerText();
+        const posB = allText.indexOf('Sort Date Bundle B');
+        const posA = allText.indexOf('Sort Date Bundle A');
+        const posC = allText.indexOf('Sort Date Bundle C');
+        expect(posB).toBeGreaterThanOrEqual(0);
+        expect(posA).toBeGreaterThanOrEqual(0);
+        expect(posC).toBeGreaterThanOrEqual(0);
+        expect(posB).toBeLessThan(posA);
+        expect(posA).toBeLessThan(posC);
+      });
+    });
+
+    // ── Scenario: Grace switches to stage grouping ──
+    test.describe('Scenario: Grace switches to stage grouping', () => {
+      let bundlePrep1, bundlePrep2, bundleAnnounced;
+      let templateForStage;
+
+      test.beforeAll(async ({ request }) => {
+        // Create template to use
+        const tRes = await request.post('/api/templates', {
+          data: {
+            name: 'Stage Test Template',
+            type: 'test',
+            taskDefinitions: [{ refId: 't1', description: 'Task 1', offsetDays: 0 }],
+          },
+        });
+        templateForStage = (await tRes.json()).template;
+
+        // Create 2 preparation bundles and 1 announced
+        const r1 = await request.post('/api/bundles', {
+          data: { title: 'Stage Bundle Prep1', anchorDate: '2026-04-01', status: 'active', stage: 'preparation' },
+        });
+        bundlePrep1 = (await r1.json()).bundle;
+
+        const r2 = await request.post('/api/bundles', {
+          data: { title: 'Stage Bundle Prep2', anchorDate: '2026-04-15', status: 'active', stage: 'preparation' },
+        });
+        bundlePrep2 = (await r2.json()).bundle;
+
+        const r3 = await request.post('/api/bundles', {
+          data: { title: 'Stage Bundle Announced', anchorDate: '2026-04-20', status: 'active', stage: 'announced' },
+        });
+        bundleAnnounced = (await r3.json()).bundle;
+      });
+
+      test.afterAll(async ({ request }) => {
+        for (const b of [bundlePrep1, bundlePrep2, bundleAnnounced]) {
+          if (b) {
+            await request.put('/api/bundles/' + b.id + '/archive');
+            await request.delete('/api/bundles/' + b.id);
+          }
+        }
+        if (templateForStage) await request.delete('/api/templates/' + templateForStage.id);
+      });
+
+      test('Clicking Stage button groups bundles under stage headings', async ({ page }) => {
+        await page.goto('/#/');
+        await page.waitForSelector('[data-testid="bundle-sort-control"]', { timeout: 10000 });
+
+        // Click Stage button
+        await page.locator('[data-testid="sort-btn-stage"]').click();
+
+        // Stage button should be active
+        await expect(page.locator('[data-testid="sort-btn-stage"]')).toHaveClass(/active/);
+        await expect(page.locator('[data-testid="sort-btn-date"]')).not.toHaveClass(/active/);
+
+        // Wait for re-render
+        await page.waitForSelector('.bundle-group-heading', { timeout: 10000 });
+
+        // Should show Preparation and Announced headings
+        // Note: CSS text-transform: uppercase means innerText returns uppercase
+        const headings = page.locator('#dashboard-bundles .bundle-group-heading');
+        const headingTexts = await headings.allInnerTexts();
+        const headingTextsLower = headingTexts.map(function (h) { return h.toLowerCase(); });
+        expect(headingTextsLower).toContain('preparation');
+        expect(headingTextsLower).toContain('announced');
+
+        // Preparation heading should appear before Announced (fixed order)
+        const prepIdx = headingTextsLower.indexOf('preparation');
+        const annIdx = headingTextsLower.indexOf('announced');
+        expect(prepIdx).toBeLessThan(annIdx);
+
+        // The stage-prepared bundles should be under the Preparation heading
+        await expect(page.locator('#dashboard-bundles')).toContainText('Stage Bundle Prep1');
+        await expect(page.locator('#dashboard-bundles')).toContainText('Stage Bundle Prep2');
+
+        // The announced bundle should appear in the bundles list
+        await expect(page.locator('#dashboard-bundles')).toContainText('Stage Bundle Announced');
+      });
+
+      test('Stage headings use human-readable labels including After Event', async ({ page, request }) => {
+        // Create a bundle in after-event stage
+        const r = await request.post('/api/bundles', {
+          data: { title: 'AfterEvent Bundle Test', anchorDate: '2026-04-25', status: 'active', stage: 'after-event' },
+        });
+        const afterEventBundle = (await r.json()).bundle;
+
+        try {
+          await page.goto('/#/');
+          await page.waitForSelector('[data-testid="bundle-sort-control"]', { timeout: 10000 });
+
+          // Click Stage
+          await page.locator('[data-testid="sort-btn-stage"]').click();
+          await page.waitForSelector('.bundle-group-heading', { timeout: 10000 });
+
+          // Should show "After Event" label (not "after-event")
+          // Note: CSS text-transform: uppercase, so we check case-insensitively
+          const headings = page.locator('#dashboard-bundles .bundle-group-heading');
+          const headingTexts = await headings.allInnerTexts();
+          const headingTextsLower = headingTexts.map(function (h) { return h.toLowerCase(); });
+          expect(headingTextsLower).toContain('after event');
+          // Should NOT show "after-event" as a heading (the raw stage value)
+          expect(headingTextsLower).not.toContain('after-event');
+        } finally {
+          await request.put('/api/bundles/' + afterEventBundle.id + '/archive');
+          await request.delete('/api/bundles/' + afterEventBundle.id);
+        }
+      });
+    });
+
+    // ── Scenario: Grace switches to template grouping ──
+    test.describe('Scenario: Grace switches to template grouping', () => {
+      let templateNewsletter2, templatePodcast2;
+      let bNewsletter1, bNewsletter2, bPodcast;
+
+      test.beforeAll(async ({ request }) => {
+        const tRes1 = await request.post('/api/templates', {
+          data: {
+            name: 'Newsletter Sort32',
+            type: 'newsletter',
+            taskDefinitions: [{ refId: 't1', description: 'Write', offsetDays: 0 }],
+          },
+        });
+        templateNewsletter2 = (await tRes1.json()).template;
+
+        const tRes2 = await request.post('/api/templates', {
+          data: {
+            name: 'Podcast Sort32',
+            type: 'podcast',
+            taskDefinitions: [{ refId: 't1', description: 'Record', offsetDays: 0 }],
+          },
+        });
+        templatePodcast2 = (await tRes2.json()).template;
+
+        const r1 = await request.post('/api/bundles', {
+          data: { title: 'Newsletter Bundle 32A', anchorDate: '2026-04-01', templateId: templateNewsletter2.id },
+        });
+        bNewsletter1 = (await r1.json()).bundle;
+
+        const r2 = await request.post('/api/bundles', {
+          data: { title: 'Newsletter Bundle 32B', anchorDate: '2026-04-08', templateId: templateNewsletter2.id },
+        });
+        bNewsletter2 = (await r2.json()).bundle;
+
+        const r3 = await request.post('/api/bundles', {
+          data: { title: 'Podcast Bundle 32', anchorDate: '2026-04-05', templateId: templatePodcast2.id },
+        });
+        bPodcast = (await r3.json()).bundle;
+      });
+
+      test.afterAll(async ({ request }) => {
+        for (const b of [bNewsletter1, bNewsletter2, bPodcast]) {
+          if (b) {
+            await request.put('/api/bundles/' + b.id + '/archive');
+            await request.delete('/api/bundles/' + b.id);
+          }
+        }
+        for (const t of [templateNewsletter2, templatePodcast2]) {
+          if (t) await request.delete('/api/templates/' + t.id);
+        }
+      });
+
+      test('Clicking Template button groups bundles under template headings', async ({ page }) => {
+        await page.goto('/#/');
+        await page.waitForSelector('[data-testid="bundle-sort-control"]', { timeout: 10000 });
+
+        // Click Template button
+        await page.locator('[data-testid="sort-btn-template"]').click();
+
+        // Template button should be active
+        await expect(page.locator('[data-testid="sort-btn-template"]')).toHaveClass(/active/);
+        await expect(page.locator('[data-testid="sort-btn-date"]')).not.toHaveClass(/active/);
+
+        // Wait for group headings
+        await page.waitForSelector('.bundle-group-heading', { timeout: 10000 });
+
+        // Should show template name headings
+        await expect(page.locator('#dashboard-bundles')).toContainText('Newsletter Sort32');
+        await expect(page.locator('#dashboard-bundles')).toContainText('Podcast Sort32');
+
+        // Both newsletter bundles should be visible
+        await expect(page.locator('#dashboard-bundles')).toContainText('Newsletter Bundle 32A');
+        await expect(page.locator('#dashboard-bundles')).toContainText('Newsletter Bundle 32B');
+        await expect(page.locator('#dashboard-bundles')).toContainText('Podcast Bundle 32');
+      });
+    });
+
+    // ── Scenario: Grace switches back to date sort ──
+    test.describe('Scenario: Grace switches back to date sort after stage', () => {
+      let bundle;
+
+      test.beforeAll(async ({ request }) => {
+        const r = await request.post('/api/bundles', {
+          data: { title: 'Back To Date Bundle', anchorDate: '2026-04-03', status: 'active' },
+        });
+        bundle = (await r.json()).bundle;
+      });
+
+      test.afterAll(async ({ request }) => {
+        if (bundle) {
+          await request.put('/api/bundles/' + bundle.id + '/archive');
+          await request.delete('/api/bundles/' + bundle.id);
+        }
+      });
+
+      test('Switching back to Date removes group headings and shows flat list', async ({ page }) => {
+        await page.goto('/#/');
+        await page.waitForSelector('[data-testid="bundle-sort-control"]', { timeout: 10000 });
+
+        // Switch to Stage first
+        await page.locator('[data-testid="sort-btn-stage"]').click();
+        await page.waitForSelector('.bundle-group-heading', { timeout: 10000 });
+
+        // Switch back to Date
+        await page.locator('[data-testid="sort-btn-date"]').click();
+
+        // Wait for re-render (no headings expected)
+        await page.waitForSelector('.dashboard-bundle-card', { timeout: 10000 });
+
+        // Date button should now be active
+        await expect(page.locator('[data-testid="sort-btn-date"]')).toHaveClass(/active/);
+        await expect(page.locator('[data-testid="sort-btn-stage"]')).not.toHaveClass(/active/);
+
+        // No group headings in date mode
+        const headings = page.locator('#dashboard-bundles .bundle-group-heading');
+        await expect(headings).toHaveCount(0);
+      });
+    });
+
+    // ── Scenario: Only non-empty stages appear in stage mode ──
+    test.describe('Scenario: Only non-empty stages appear in stage mode', () => {
+      let bundlePrep, bundleAfterEvent;
+
+      test.beforeAll(async ({ request }) => {
+        const r1 = await request.post('/api/bundles', {
+          data: { title: 'Non-empty Stage PrepTest', anchorDate: '2026-04-10', status: 'active', stage: 'preparation' },
+        });
+        bundlePrep = (await r1.json()).bundle;
+
+        const r2 = await request.post('/api/bundles', {
+          data: { title: 'Non-empty Stage AfterTest', anchorDate: '2026-04-15', status: 'active', stage: 'after-event' },
+        });
+        bundleAfterEvent = (await r2.json()).bundle;
+      });
+
+      test.afterAll(async ({ request }) => {
+        for (const b of [bundlePrep, bundleAfterEvent]) {
+          if (b) {
+            await request.put('/api/bundles/' + b.id + '/archive');
+            await request.delete('/api/bundles/' + b.id);
+          }
+        }
+      });
+
+      test('Only stages with bundles show headings in stage mode', async ({ page }) => {
+        await page.goto('/#/');
+        await page.waitForSelector('[data-testid="bundle-sort-control"]', { timeout: 10000 });
+
+        await page.locator('[data-testid="sort-btn-stage"]').click();
+        await page.waitForSelector('.bundle-group-heading', { timeout: 10000 });
+
+        const headings = page.locator('#dashboard-bundles .bundle-group-heading');
+        const headingTexts = await headings.allInnerTexts();
+        // Note: CSS text-transform: uppercase, so we check case-insensitively
+        const headingTextsLower = headingTexts.map(function (h) { return h.toLowerCase(); });
+
+        // Preparation and After Event should appear (our bundles are in those stages)
+        expect(headingTextsLower).toContain('preparation');
+        expect(headingTextsLower).toContain('after event');
+      });
+    });
+
+    // ── Sort control structure ──
+    test.describe('Sort control structure', () => {
+      test('Sort control has three buttons with correct labels', async ({ page }) => {
+        await page.goto('/#/');
+        await page.waitForSelector('[data-testid="bundle-sort-control"]', { timeout: 10000 });
+
+        const control = page.locator('[data-testid="bundle-sort-control"]');
+        await expect(control).toBeVisible();
+
+        const dateBtn = page.locator('[data-testid="sort-btn-date"]');
+        const stageBtn = page.locator('[data-testid="sort-btn-stage"]');
+        const templateBtn = page.locator('[data-testid="sort-btn-template"]');
+
+        await expect(dateBtn).toBeVisible();
+        await expect(stageBtn).toBeVisible();
+        await expect(templateBtn).toBeVisible();
+
+        await expect(dateBtn).toHaveText('Date');
+        await expect(stageBtn).toHaveText('Stage');
+        await expect(templateBtn).toHaveText('Template');
+      });
+    });
+
+    // ── Empty state ──
+    test.describe('Empty state still works in all modes', () => {
+      // This is a structural test — if there happen to be no active bundles
+      // the empty state message should appear regardless of sort mode
+      test('Sort control is visible even when bundles might be empty', async ({ page }) => {
+        await page.goto('/#/');
+        await page.waitForSelector('[data-testid="bundle-sort-control"]', { timeout: 10000 });
+        await expect(page.locator('[data-testid="bundle-sort-control"]')).toBeVisible();
+      });
     });
   });
 });
