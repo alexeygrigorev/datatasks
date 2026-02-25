@@ -1358,7 +1358,6 @@
     /* ── Bell notification icon ───────────────────────────── */
 
     .notif-bell-wrapper {
-      margin-left: auto;
       position: relative;
       display: flex;
       align-items: center;
@@ -1517,17 +1516,34 @@
       color: #e74c3c;
       border-color: #e74c3c;
     }
+
+    /* ── Sign-in form ──────────────────────────────────────── */
+
+    .signin-container {
+      max-width: 360px;
+      margin: 80px auto 0;
+    }
+
+    /* Nav sign-out button spacing */
+    #signout-btn {
+      margin-left: auto;
+    }
+
+    /* Hide nav links initially until authenticated */
+    .nav-hidden {
+      display: none !important;
+    }
   </style>
 </head>
 <body>
   <nav>
     <a href="#/" class="brand">DataTasks</a>
-    <a href="#/">Home</a>
-    <a href="#/tasks">Tasks</a>
-    <a href="#/bundles">Bundles</a>
-    <a href="#/templates">Templates</a>
-    <a href="#/recurring">Recurring</a>
-    <div class="notif-bell-wrapper" id="notif-bell-wrapper">
+    <a href="#/" class="nav-link" style="display:none;">Home</a>
+    <a href="#/tasks" class="nav-link" style="display:none;">Tasks</a>
+    <a href="#/bundles" class="nav-link" style="display:none;">Bundles</a>
+    <a href="#/templates" class="nav-link" style="display:none;">Templates</a>
+    <a href="#/recurring" class="nav-link" style="display:none;">Recurring</a>
+    <div class="notif-bell-wrapper nav-link" id="notif-bell-wrapper" style="display:none;margin-left:auto;">
       <span class="notif-bell" id="notif-bell" title="Notifications">&#x1F514;<span class="notif-badge" id="notif-badge" style="display:none">0</span></span>
       <div class="notif-dropdown" id="notif-dropdown" style="display:none"></div>
     </div>

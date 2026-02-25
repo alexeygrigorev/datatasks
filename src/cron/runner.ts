@@ -95,12 +95,16 @@ async function runCron(client: DynamoDBDocumentClient, now?: Date): Promise<Cron
     // 7. Instantiate template tasks
     await instantiateTemplate(client, template.id, bundle.id, anchorDate);
 
-    // 8. Create notification
-    await createNotification(client, {
+    // 8. Create notification (targeted to template's defaultAssigneeId if set)
+    const notificationData: Record<string, unknown> = {
       message: `${template.name} bundle auto-created for ${formatAnchorDate(anchorDate)}`,
       bundleId: bundle.id,
       templateId: template.id,
-    });
+    };
+    if (template.defaultAssigneeId) {
+      notificationData.userId = template.defaultAssigneeId;
+    }
+    await createNotification(client, notificationData);
 
     created.push(bundle.id);
   }

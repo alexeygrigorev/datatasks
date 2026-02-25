@@ -196,8 +196,8 @@ test.describe('Notification bell UI (issue #30)', () => {
       const dropdown = page.locator('#notif-dropdown');
       await expect(dropdown).toBeVisible();
 
-      // Click outside (on the main app area)
-      await page.locator('#app').click();
+      // Click outside (on the page body, away from the dropdown)
+      await page.mouse.click(10, 400);
 
       // Dropdown should be hidden
       await expect(dropdown).toBeHidden();

@@ -73,7 +73,7 @@ describe('Home dashboard (issue #26)', () => {
     it('index.html has Home nav link', async () => {
       const event = { httpMethod: 'GET', path: '/' };
       const result = await handler(event, {});
-      assert.ok(result.body.includes('href="#/">Home</a>'), 'should have Home nav link');
+      assert.ok(result.body.includes('href="#/"') && result.body.includes('Home'), 'should have Home nav link');
     });
 
     it('index.html contains dashboard-wide CSS class', async () => {
@@ -131,8 +131,9 @@ describe('Home dashboard (issue #26)', () => {
     it('app.js contains dashboardState with default user', async () => {
       const event = { httpMethod: 'GET', path: '/public/app.js' };
       const result = await handler(event, {});
-      assert.ok(result.body.includes('GRACE_ID'), 'should have GRACE_ID constant');
+      assert.ok(result.body.includes('dashboardState'), 'should have dashboardState');
       assert.ok(result.body.includes('assignedToMe: true'), 'assignedToMe should default to true');
+      assert.ok(result.body.includes('currentUserId'), 'should have currentUserId field set from logged-in user');
     });
 
     it('app.js filters active bundles client-side', async () => {

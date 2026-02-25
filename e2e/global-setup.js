@@ -1,10 +1,14 @@
 const { spawn } = require('child_process');
 const http = require('http');
 const path = require('path');
+const { chromium } = require('@playwright/test');
+const fs = require('fs');
 
 const TEST_SERVER_PORT = 3001;
 const READY_TIMEOUT_MS = 30000;
 const POLL_INTERVAL_MS = 300;
+
+const AUTH_STATE_PATH = path.join(__dirname, '.auth-state.json');
 
 /**
  * Poll the test server until it responds or timeout is reached.
@@ -55,6 +59,7 @@ module.exports = async function globalSetup() {
         ...process.env,
         NODE_ENV: 'test',
         IS_LOCAL: 'true',
+        SKIP_AUTH: 'true',
         PORT: String(TEST_SERVER_PORT),
       },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -82,4 +87,42 @@ module.exports = async function globalSetup() {
   await waitForServer(TEST_SERVER_PORT, READY_TIMEOUT_MS);
 
   console.log(`[global-setup] Test server is ready on port ${TEST_SERVER_PORT}`);
+
+  // ── Auth: Log in as Grace and save the auth state ──────────────
+  const baseURL = `http://localhost:${TEST_SERVER_PORT}`;
+
+  const browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage({ baseURL });
+
+  try {
+    const response = await page.request.post('/api/auth/login', {
+      data: { email: 'grace@datatalks.club', password: '111' },
+    });
+
+    if (response.status() === 200) {
+      const { token, user } = await response.json();
+
+      // Navigate to the app and set localStorage
+      await page.goto('/');
+      await page.evaluate((args) => {
+        localStorage.setItem(args.tokenKey, args.token);
+        localStorage.setItem(args.userKey, JSON.stringify(args.user));
+      }, {
+        tokenKey: 'datatasks_token',
+        userKey: 'datatasks_user',
+        token,
+        user,
+      });
+
+      // Save the storage state
+      await page.context().storageState({ path: AUTH_STATE_PATH });
+      console.log('[global-setup] Auth state saved with token for Grace');
+    } else {
+      console.warn('[global-setup] Login failed with status', response.status(), '- tests may fail');
+    }
+  } catch (err) {
+    console.warn('[global-setup] Could not set up auth state:', err.message);
+  } finally {
+    await browser.close();
+  }
 };

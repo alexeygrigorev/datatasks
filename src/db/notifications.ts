@@ -77,8 +77,9 @@ async function dismissNotification(client: DynamoDBDocumentClient, id: string): 
 
 /**
  * List undismissed notifications, sorted by most recent first.
+ * If userId is provided, returns notifications where userId matches OR userId is absent (global).
  */
-async function listUndismissedNotifications(client: DynamoDBDocumentClient): Promise<Notification[]> {
+async function listUndismissedNotifications(client: DynamoDBDocumentClient, userId?: string): Promise<Notification[]> {
   const result = await client.send(
     new ScanCommand({
       TableName: TABLE_NOTIFICATIONS,
@@ -90,9 +91,16 @@ async function listUndismissedNotifications(client: DynamoDBDocumentClient): Pro
     })
   );
 
-  const notifications = (result.Items || []).map(
+  let notifications = (result.Items || []).map(
     (item) => cleanItem(item as Record<string, unknown>) as Notification
   );
+
+  // Filter by userId: show global (no userId) + matching userId
+  if (userId) {
+    notifications = notifications.filter(
+      (n) => !n.userId || n.userId === userId
+    );
+  }
 
   // Sort by createdAt descending (most recent first)
   notifications.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -102,8 +110,9 @@ async function listUndismissedNotifications(client: DynamoDBDocumentClient): Pro
 
 /**
  * List ALL notifications (dismissed and undismissed), undismissed first, then by createdAt descending.
+ * If userId is provided, returns notifications where userId matches OR userId is absent (global).
  */
-async function listAllNotifications(client: DynamoDBDocumentClient): Promise<Notification[]> {
+async function listAllNotifications(client: DynamoDBDocumentClient, userId?: string): Promise<Notification[]> {
   const result = await client.send(
     new ScanCommand({
       TableName: TABLE_NOTIFICATIONS,
@@ -114,9 +123,16 @@ async function listAllNotifications(client: DynamoDBDocumentClient): Promise<Not
     })
   );
 
-  const notifications = (result.Items || []).map(
+  let notifications = (result.Items || []).map(
     (item) => cleanItem(item as Record<string, unknown>) as Notification
   );
+
+  // Filter by userId: show global (no userId) + matching userId
+  if (userId) {
+    notifications = notifications.filter(
+      (n) => !n.userId || n.userId === userId
+    );
+  }
 
   // Sort: undismissed first, then within each group by createdAt descending
   notifications.sort((a, b) => {

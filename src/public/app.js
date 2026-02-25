@@ -1,7 +1,169 @@
 (function () {
   'use strict';
 
+  var TOKEN_KEY = 'datatasks_token';
+  var USER_KEY = 'datatasks_user';
+
   var app = document.getElementById('app');
+  var nav = document.querySelector('nav');
+
+  // ── Auth helpers ─────────────────────────────────────────────────
+
+  function getStoredUser() {
+    try {
+      var raw = localStorage.getItem(USER_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function getStoredToken() {
+    return localStorage.getItem(TOKEN_KEY);
+  }
+
+  function setSession(token, user) {
+    localStorage.setItem(TOKEN_KEY, token);
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+  }
+
+  function clearSession() {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    usersCache = null;
+    bundlesCache = null;
+  }
+
+  // ── Sign-in form ────────────────────────────────────────────────
+
+  function renderSignIn() {
+    // Hide nav links (keep only brand visible)
+    var navLinks = nav.querySelectorAll('.nav-link, #signout-btn');
+    navLinks.forEach(function (el) {
+      el.style.display = 'none';
+    });
+
+    clearApp();
+    app.classList.remove('dashboard-wide');
+
+    var container = document.createElement('div');
+    container.className = 'signin-container';
+    container.style.cssText = 'max-width:360px;margin:80px auto 0;';
+
+    var card = document.createElement('div');
+    card.className = 'form-section';
+    card.style.cssText = 'padding:32px;';
+
+    var title = document.createElement('h2');
+    title.textContent = 'Sign in';
+    title.style.cssText = 'margin-bottom:24px;font-size:22px;';
+    card.appendChild(title);
+
+    var errorDiv = document.createElement('div');
+    errorDiv.id = 'signin-error';
+    errorDiv.style.cssText = 'display:none;';
+    errorDiv.className = 'error-banner';
+    card.appendChild(errorDiv);
+
+    var emailGroup = document.createElement('div');
+    emailGroup.className = 'form-group';
+    emailGroup.style.cssText = 'margin-bottom:16px;';
+    emailGroup.innerHTML = '<label for="signin-email" style="margin-bottom:6px;display:block;">Email</label>' +
+      '<input type="email" id="signin-email" placeholder="Email address" style="width:100%;" autocomplete="username" />';
+    card.appendChild(emailGroup);
+
+    var passwordGroup = document.createElement('div');
+    passwordGroup.className = 'form-group';
+    passwordGroup.style.cssText = 'margin-bottom:24px;';
+    passwordGroup.innerHTML = '<label for="signin-password" style="margin-bottom:6px;display:block;">Password</label>' +
+      '<input type="password" id="signin-password" placeholder="Password" style="width:100%;" autocomplete="current-password" />';
+    card.appendChild(passwordGroup);
+
+    var submitBtn = document.createElement('button');
+    submitBtn.className = 'btn-primary';
+    submitBtn.id = 'signin-submit';
+    submitBtn.textContent = 'Sign in';
+    submitBtn.style.cssText = 'width:100%;padding:10px;font-size:15px;';
+    card.appendChild(submitBtn);
+
+    container.appendChild(card);
+    app.appendChild(container);
+
+    function doLogin() {
+      var email = document.getElementById('signin-email').value.trim();
+      var password = document.getElementById('signin-password').value;
+      var btn = document.getElementById('signin-submit');
+      var err = document.getElementById('signin-error');
+
+      err.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Signing in...';
+
+      api.auth.login(email, password).then(function (data) {
+        setSession(data.token, data.user);
+        startApp(data.user);
+      }).catch(function () {
+        err.textContent = 'Invalid email or password';
+        err.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Sign in';
+      });
+    }
+
+    submitBtn.addEventListener('click', doLogin);
+
+    // Allow Enter key in password field
+    document.getElementById('signin-password').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') doLogin();
+    });
+    document.getElementById('signin-email').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') doLogin();
+    });
+  }
+
+  // ── App startup ──────────────────────────────────────────────────
+
+  function startApp(user) {
+    // Show nav links
+    var navLinks = nav.querySelectorAll('.nav-link');
+    navLinks.forEach(function (el) {
+      el.style.display = '';
+    });
+
+    // Show sign-out button (remove old if exists)
+    var oldSignOut = document.getElementById('signout-btn');
+    if (oldSignOut) oldSignOut.remove();
+
+    var signOutBtn = document.createElement('button');
+    signOutBtn.id = 'signout-btn';
+    signOutBtn.textContent = 'Sign out';
+    signOutBtn.style.cssText = 'margin-left:auto;background:transparent;border:1px solid #bdc3c7;color:#bdc3c7;padding:6px 14px;border-radius:4px;font-size:13px;cursor:pointer;font-family:inherit;';
+    signOutBtn.addEventListener('mouseenter', function () {
+      signOutBtn.style.background = 'rgba(255,255,255,0.1)';
+    });
+    signOutBtn.addEventListener('mouseleave', function () {
+      signOutBtn.style.background = 'transparent';
+    });
+    signOutBtn.addEventListener('click', function () {
+      api.auth.logout().catch(function () {}).finally(function () {
+        clearSession();
+        renderSignIn();
+      });
+    });
+    nav.appendChild(signOutBtn);
+
+    // Set current user ID from stored user
+    dashboardState.currentUserId = user ? user.id : '';
+
+    // Navigate to current hash (or default)
+    navigate();
+  }
+
+  // Register 401 handler in api.js
+  window._onUnauthorized = function () {
+    clearSession();
+    renderSignIn();
+  };
 
   // ── Helpers ─────────────────────────────────────────────────────
 
@@ -48,7 +210,7 @@
       app.classList.remove('dashboard-wide');
     }
     // Update active nav link
-    var links = document.querySelectorAll('nav a:not(.brand)');
+    var links = document.querySelectorAll('nav .nav-link');
     links.forEach(function (a) {
       a.classList.toggle('active', a.getAttribute('href') === hash);
     });
@@ -62,7 +224,15 @@
   window.addEventListener('hashchange', navigate);
   window.addEventListener('DOMContentLoaded', function () {
     initBell();
-    navigate();
+    var token = getStoredToken();
+    var user = getStoredUser();
+    if (token && user) {
+      // Token exists in localStorage - restore session immediately
+      // (no round-trip to server; 401 from any API call will trigger sign-in)
+      startApp(user);
+    } else {
+      renderSignIn();
+    }
   });
 
   // ── Bell notification icon ─────────────────────────────────────
@@ -182,10 +352,9 @@
 
   // ── Dashboard View ─────────────────────────────────────────────
 
-  var GRACE_ID = '00000000-0000-0000-0000-000000000001';
   var dashboardState = {
     assignedToMe: true,
-    currentUserId: GRACE_ID,
+    currentUserId: '',
     bundleSortMode: 'date', // 'date' | 'stage' | 'template'
   };
 

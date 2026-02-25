@@ -1,0 +1,18 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://localhost:3000",
+      "localStorage": [
+        {
+          "name": "datatasks_token",
+          "value": "0fb9d0b2-8503-4fc9-9240-d3defcc720e3"
+        },
+        {
+          "name": "datatasks_user",
+          "value": "{\"id\":\"00000000-0000-0000-0000-000000000001\",\"createdAt\":\"2026-02-25T14:21:31.205Z\",\"name\":\"Grace\",\"email\":\"grace@datatalks.club\"}"
+        }
+      ]
+    }
+  ]
+}
