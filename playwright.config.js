@@ -4,14 +4,10 @@ module.exports = defineConfig({
   testDir: './e2e',
   timeout: 30000,
   retries: 0,
+  globalSetup: './e2e/global-setup.js',
+  globalTeardown: './e2e/global-teardown.js',
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: 'http://localhost:3001',
     headless: true,
-  },
-  webServer: {
-    command: 'IS_LOCAL=true tsx scripts/dev-server.ts',
-    port: 3000,
-    reuseExistingServer: true,
-    timeout: 10000,
   },
 });
