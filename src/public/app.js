@@ -277,13 +277,21 @@
             card.className = 'dashboard-bundle-card';
             card.setAttribute('data-bundle-id', b.id);
 
-            // Title line with emoji
+            // Title line with emoji + anchor date on same line
             var titleDiv = document.createElement('div');
             titleDiv.className = 'dashboard-bundle-card-title';
-            titleDiv.textContent = (b.emoji ? b.emoji + ' ' : '') + (b.title || 'Untitled');
+            var titleText = document.createElement('span');
+            titleText.textContent = (b.emoji ? b.emoji + ' ' : '') + (b.title || 'Untitled');
+            titleDiv.appendChild(titleText);
+            if (b.anchorDate) {
+              var dateBadge = document.createElement('span');
+              dateBadge.className = 'badge-anchor-date';
+              dateBadge.textContent = b.anchorDate;
+              titleDiv.appendChild(dateBadge);
+            }
             card.appendChild(titleDiv);
 
-            // Meta row: tags, anchor date, progress, stage
+            // Meta row: tags, progress, stage
             var metaDiv = document.createElement('div');
             metaDiv.className = 'dashboard-bundle-card-meta';
 
@@ -294,14 +302,6 @@
               tagBadge.textContent = tag;
               metaDiv.appendChild(tagBadge);
             });
-
-            // Anchor date
-            if (b.anchorDate) {
-              var dateBadge = document.createElement('span');
-              dateBadge.className = 'badge-anchor-date';
-              dateBadge.textContent = b.anchorDate;
-              metaDiv.appendChild(dateBadge);
-            }
 
             // Progress
             var progressBadge = document.createElement('span');

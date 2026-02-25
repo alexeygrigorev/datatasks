@@ -410,16 +410,18 @@ function trelloCardToBundle(card: TrelloCard, listName: string) {
     ? card.due.split('T')[0]
     : extractDateFromCardName(card.name) || fallbackDate;
 
+  // Extract emoji from card name and strip it from title
+  const emoji = extractEmoji(card.name);
+  const title = emoji ? card.name.replace(/^[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{FE00}-\u{FEFF}\u{200D}\u{20E3}\u{E0020}-\u{E007F}\u{FE0F}\u{1F3FB}-\u{1F3FF}]+\s*/u, '').trim() : card.name;
+
   const bundle: Record<string, unknown> = {
-    title: card.name,
+    title,
     anchorDate,
     description: card.desc || null,
     status: card.closed ? 'archived' : 'active',
     stage: mapStageFromList(listName),
   };
 
-  // Extract emoji from card name
-  const emoji = extractEmoji(card.name);
   if (emoji) bundle.emoji = emoji;
 
   // Extract tags from labels
