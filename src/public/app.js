@@ -31,6 +31,7 @@
     '#/bundles': renderBundles,
     '#/templates': renderTemplates,
     '#/recurring': renderRecurring,
+    '#/notifications': renderNotifications,
   };
 
   function navigate() {
@@ -51,11 +52,133 @@
     links.forEach(function (a) {
       a.classList.toggle('active', a.getAttribute('href') === hash);
     });
+    // Close dropdown on navigation
+    closeNotifDropdown();
+    // Refresh bell badge
+    refreshBellBadge();
     handler();
   }
 
   window.addEventListener('hashchange', navigate);
-  window.addEventListener('DOMContentLoaded', navigate);
+  window.addEventListener('DOMContentLoaded', function () {
+    initBell();
+    navigate();
+  });
+
+  // ── Bell notification icon ─────────────────────────────────────
+
+  function refreshBellBadge() {
+    api.notifications.list().then(function (data) {
+      var count = (data.notifications || []).length;
+      var badge = document.getElementById('notif-badge');
+      if (!badge) return;
+      if (count > 0) {
+        badge.textContent = count;
+        badge.style.display = '';
+      } else {
+        badge.style.display = 'none';
+      }
+    }).catch(function () {
+      // silently ignore
+    });
+  }
+
+  function closeNotifDropdown() {
+    var dropdown = document.getElementById('notif-dropdown');
+    if (dropdown) dropdown.style.display = 'none';
+  }
+
+  function openNotifDropdown() {
+    var dropdown = document.getElementById('notif-dropdown');
+    if (!dropdown) return;
+
+    dropdown.style.display = 'block';
+    dropdown.innerHTML = '<div class="notif-dropdown-header">Notifications</div><div class="notif-dropdown-empty">Loading...</div>';
+
+    api.notifications.list().then(function (data) {
+      var notifications = (data.notifications || []).slice(0, 3);
+      dropdown.innerHTML = '';
+
+      var header = document.createElement('div');
+      header.className = 'notif-dropdown-header';
+      header.textContent = 'Notifications';
+      dropdown.appendChild(header);
+
+      if (notifications.length === 0) {
+        var empty = document.createElement('div');
+        empty.className = 'notif-dropdown-empty';
+        empty.textContent = 'No new notifications';
+        dropdown.appendChild(empty);
+      } else {
+        notifications.forEach(function (n) {
+          var item = document.createElement('div');
+          item.className = 'notif-dropdown-item';
+          var msg = document.createElement('div');
+          msg.textContent = n.message;
+          item.appendChild(msg);
+          var time = document.createElement('div');
+          time.className = 'notif-dropdown-time';
+          time.textContent = formatRelativeTime(n.createdAt);
+          item.appendChild(time);
+          dropdown.appendChild(item);
+        });
+      }
+
+      var footer = document.createElement('div');
+      footer.className = 'notif-dropdown-footer';
+      var seeAll = document.createElement('a');
+      seeAll.href = '#/notifications';
+      seeAll.textContent = 'See all notifications';
+      seeAll.addEventListener('click', function () {
+        closeNotifDropdown();
+      });
+      footer.appendChild(seeAll);
+      dropdown.appendChild(footer);
+    }).catch(function () {
+      dropdown.innerHTML = '<div class="notif-dropdown-empty">Failed to load notifications</div>';
+    });
+  }
+
+  function initBell() {
+    var bell = document.getElementById('notif-bell');
+    var wrapper = document.getElementById('notif-bell-wrapper');
+    if (!bell || !wrapper) return;
+
+    bell.addEventListener('click', function (e) {
+      e.stopPropagation();
+      var dropdown = document.getElementById('notif-dropdown');
+      if (!dropdown) return;
+      if (dropdown.style.display === 'none' || dropdown.style.display === '') {
+        openNotifDropdown();
+      } else {
+        closeNotifDropdown();
+      }
+    });
+
+    document.addEventListener('click', function (e) {
+      var wrapper2 = document.getElementById('notif-bell-wrapper');
+      if (wrapper2 && !wrapper2.contains(e.target)) {
+        closeNotifDropdown();
+      }
+    });
+
+    refreshBellBadge();
+  }
+
+  function formatRelativeTime(isoString) {
+    if (!isoString) return '';
+    var date = new Date(isoString);
+    var now = new Date();
+    var diffMs = now - date;
+    var diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return diffMins + ' minute' + (diffMins === 1 ? '' : 's') + ' ago';
+    var diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return diffHours + ' hour' + (diffHours === 1 ? '' : 's') + ' ago';
+    var diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) return diffDays + ' day' + (diffDays === 1 ? '' : 's') + ' ago';
+    return date.toLocaleDateString();
+  }
 
   // ── Dashboard View ─────────────────────────────────────────────
 
@@ -67,15 +190,6 @@
 
   function renderDashboard() {
     clearApp();
-
-    // Notification bar
-    var notificationBar = document.createElement('div');
-    notificationBar.className = 'notification-bar';
-    notificationBar.id = 'notification-bar';
-    app.appendChild(notificationBar);
-
-    // Load notifications (graceful on 404)
-    loadNotifications();
 
     // Two-column layout
     var layout = document.createElement('div');
@@ -151,39 +265,98 @@
     loadDashboardTasks();
   }
 
-  function loadNotifications() {
-    var bar = document.getElementById('notification-bar');
-    if (!bar) return;
+  // ── Notifications Page ─────────────────────────────────────────
 
-    api.notifications.list().then(function (data) {
-      var notifications = data.notifications || [];
-      if (notifications.length === 0) {
-        bar.innerHTML = '';
-        return;
-      }
-      bar.innerHTML = '';
-      notifications.forEach(function (n) {
-        var item = document.createElement('div');
-        item.className = 'notification-item';
-        item.setAttribute('data-notification-id', n.id);
-        var msgSpan = document.createElement('span');
-        msgSpan.textContent = n.message;
-        item.appendChild(msgSpan);
-        var dismissBtn = document.createElement('button');
-        dismissBtn.textContent = 'Dismiss';
-        dismissBtn.addEventListener('click', function () {
-          api.notifications.dismiss(n.id).then(function () {
-            item.remove();
-          }).catch(function () {
-            // silently ignore
-          });
+  function renderNotifications() {
+    clearApp();
+
+    // Page header
+    var header = document.createElement('div');
+    header.className = 'notif-page-header';
+    var title = document.createElement('h2');
+    title.textContent = 'Notifications';
+    header.appendChild(title);
+    var dismissAllBtn = document.createElement('button');
+    dismissAllBtn.className = 'btn-primary';
+    dismissAllBtn.id = 'dismiss-all-btn';
+    dismissAllBtn.textContent = 'Dismiss all';
+    header.appendChild(dismissAllBtn);
+    app.appendChild(header);
+
+    var listContainer = document.createElement('div');
+    listContainer.id = 'notif-list-container';
+    listContainer.innerHTML = '<p>Loading...</p>';
+    app.appendChild(listContainer);
+
+    function loadNotifList() {
+      listContainer.innerHTML = '<p>Loading...</p>';
+      api.notifications.listAll().then(function (data) {
+        var notifications = data.notifications || [];
+        listContainer.innerHTML = '';
+
+        if (notifications.length === 0) {
+          listContainer.innerHTML = '<div class="empty-state">No notifications</div>';
+          return;
+        }
+
+        notifications.forEach(function (n) {
+          var item = document.createElement('div');
+          item.className = 'notif-list-item' + (n.dismissed ? ' dismissed' : '');
+          item.setAttribute('data-notif-item', n.id);
+
+          var body = document.createElement('div');
+          body.className = 'notif-list-item-body';
+
+          var msg = document.createElement('div');
+          msg.className = 'notif-list-item-msg';
+          msg.textContent = n.message;
+          body.appendChild(msg);
+
+          var timeDiv = document.createElement('div');
+          timeDiv.className = 'notif-list-item-time' + (n.dismissed ? ' dismissed' : '');
+          timeDiv.textContent = formatRelativeTime(n.createdAt) + (n.dismissed ? ' \u2014 dismissed' : '');
+          body.appendChild(timeDiv);
+
+          item.appendChild(body);
+
+          if (!n.dismissed) {
+            var dismissBtn = document.createElement('button');
+            dismissBtn.className = 'btn-dismiss-notif';
+            dismissBtn.textContent = '\u00D7';
+            dismissBtn.title = 'Dismiss';
+            dismissBtn.addEventListener('click', function () {
+              api.notifications.dismiss(n.id).then(function () {
+                item.className = 'notif-list-item dismissed';
+                timeDiv.className = 'notif-list-item-time dismissed';
+                timeDiv.textContent = formatRelativeTime(n.createdAt) + ' \u2014 dismissed';
+                dismissBtn.remove();
+                refreshBellBadge();
+              }).catch(function (err) {
+                showError('Failed to dismiss: ' + err.message);
+              });
+            });
+            item.appendChild(dismissBtn);
+          }
+
+          listContainer.appendChild(item);
         });
-        item.appendChild(dismissBtn);
-        bar.appendChild(item);
+      }).catch(function (err) {
+        listContainer.innerHTML = '';
+        showError('Failed to load notifications: ' + err.message);
       });
-    }).catch(function () {
-      // Gracefully hide if API not available (404)
-      bar.innerHTML = '';
+    }
+
+    loadNotifList();
+
+    dismissAllBtn.addEventListener('click', function () {
+      dismissAllBtn.disabled = true;
+      api.notifications.dismissAll().then(function () {
+        loadNotifList();
+        refreshBellBadge();
+      }).catch(function (err) {
+        showError('Failed to dismiss all: ' + err.message);
+        dismissAllBtn.disabled = false;
+      });
     });
   }
 

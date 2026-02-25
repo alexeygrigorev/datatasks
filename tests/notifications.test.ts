@@ -9,6 +9,8 @@ import {
   getNotification,
   dismissNotification,
   listUndismissedNotifications,
+  listAllNotifications,
+  dismissAllNotifications,
 } from '../src/db/notifications';
 
 describe('Notifications data layer', () => {
@@ -113,5 +115,69 @@ describe('Notifications data layer', () => {
     assert.ok(idx1 >= 0, 'should contain first notification');
     assert.ok(idx2 >= 0, 'should contain second notification');
     assert.ok(idx2 < idx1, 'second (more recent) should come before first');
+  });
+
+  it('listAllNotifications returns both dismissed and undismissed', async () => {
+    const n1 = await createNotification(client, { message: 'ListAll active' });
+    const n2 = await createNotification(client, { message: 'ListAll dismissed' });
+    await dismissNotification(client, n2.id);
+
+    const all = await listAllNotifications(client);
+    const ids = all.map((n) => n.id);
+
+    assert.ok(ids.includes(n1.id), 'should contain active notification');
+    assert.ok(ids.includes(n2.id), 'should contain dismissed notification');
+  });
+
+  it('listAllNotifications returns undismissed before dismissed', async () => {
+    // Clear-ish: create fresh ones with specific timing
+    const nDismissed = await createNotification(client, { message: 'ListAll ordering dismissed' });
+    await new Promise((r) => setTimeout(r, 10));
+    const nActive = await createNotification(client, { message: 'ListAll ordering active' });
+
+    await dismissNotification(client, nDismissed.id);
+
+    const all = await listAllNotifications(client);
+    const idxDismissed = all.findIndex((n) => n.id === nDismissed.id);
+    const idxActive = all.findIndex((n) => n.id === nActive.id);
+
+    assert.ok(idxActive >= 0, 'should contain active notification');
+    assert.ok(idxDismissed >= 0, 'should contain dismissed notification');
+    assert.ok(idxActive < idxDismissed, 'undismissed should come before dismissed');
+  });
+
+  it('dismissAllNotifications dismisses all undismissed and returns count', async () => {
+    // Create 2 fresh undismissed notifications
+    const na = await createNotification(client, { message: 'DismissAll test A' });
+    const nb = await createNotification(client, { message: 'DismissAll test B' });
+
+    // Also create a pre-dismissed one
+    const nc = await createNotification(client, { message: 'DismissAll test C already dismissed' });
+    await dismissNotification(client, nc.id);
+
+    // Get undismissed count before
+    const beforeList = await listUndismissedNotifications(client);
+    const beforeIds = new Set(beforeList.map((n) => n.id));
+    assert.ok(beforeIds.has(na.id), 'na should be undismissed before');
+    assert.ok(beforeIds.has(nb.id), 'nb should be undismissed before');
+
+    const count = await dismissAllNotifications(client);
+
+    // count should be at least 2 (na + nb)
+    assert.ok(count >= 2, 'should have dismissed at least 2 notifications');
+
+    // After: all undismissed should now be dismissed
+    const afterUndismissed = await listUndismissedNotifications(client);
+    const afterIds = afterUndismissed.map((n) => n.id);
+    assert.ok(!afterIds.includes(na.id), 'na should now be dismissed');
+    assert.ok(!afterIds.includes(nb.id), 'nb should now be dismissed');
+  });
+
+  it('dismissAllNotifications returns 0 when nothing to dismiss', async () => {
+    // Dismiss everything first
+    await dismissAllNotifications(client);
+    // Now dismiss again — should return 0
+    const count = await dismissAllNotifications(client);
+    assert.strictEqual(count, 0);
   });
 });

@@ -4,15 +4,17 @@ import {
   getNotification,
   dismissNotification,
   listUndismissedNotifications,
+  listAllNotifications,
+  dismissAllNotifications,
 } from '../db/notifications';
-import type { LambdaResponse } from '../types';
+import type { LambdaEvent, LambdaResponse } from '../types';
 
 const JSON_HEADERS: Record<string, string> = { 'Content-Type': 'application/json' };
 
 /**
  * Handle all /api/notifications routes.
  */
-async function handleNotificationRoutes(path: string, method: string, _rawBody: string | null): Promise<LambdaResponse | null> {
+async function handleNotificationRoutes(path: string, method: string, _rawBody: string | null, queryParams?: Record<string, string> | null): Promise<LambdaResponse | null> {
   if (!path.startsWith('/api/notifications')) {
     return null;
   }
@@ -22,13 +24,31 @@ async function handleNotificationRoutes(path: string, method: string, _rawBody: 
   try {
     const suffix = path.slice('/api/notifications'.length);
 
-    // Route: GET /api/notifications
+    // Route: GET /api/notifications (with optional ?all=true)
     if ((suffix === '' || suffix === '/') && method === 'GET') {
+      if (queryParams && queryParams['all'] === 'true') {
+        const notifications = await listAllNotifications(client);
+        return {
+          statusCode: 200,
+          headers: JSON_HEADERS,
+          body: JSON.stringify({ notifications }),
+        };
+      }
       const notifications = await listUndismissedNotifications(client);
       return {
         statusCode: 200,
         headers: JSON_HEADERS,
         body: JSON.stringify({ notifications }),
+      };
+    }
+
+    // Route: PUT /api/notifications/dismiss-all
+    if (suffix === '/dismiss-all' && method === 'PUT') {
+      const count = await dismissAllNotifications(client);
+      return {
+        statusCode: 200,
+        headers: JSON_HEADERS,
+        body: JSON.stringify({ count }),
       };
     }
 

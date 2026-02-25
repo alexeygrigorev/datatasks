@@ -151,8 +151,17 @@
       list: function () {
         return fetch('/api/notifications').then(handleResponse);
       },
+      listAll: function () {
+        return fetch('/api/notifications?all=true').then(handleResponse);
+      },
       dismiss: function (id) {
         return fetch('/api/notifications/' + id + '/dismiss', {
+          method: 'PUT',
+          headers: JSON_HEADERS,
+        }).then(handleResponse);
+      },
+      dismissAll: function () {
+        return fetch('/api/notifications/dismiss-all', {
           method: 'PUT',
           headers: JSON_HEADERS,
         }).then(handleResponse);

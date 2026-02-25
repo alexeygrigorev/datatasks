@@ -100,9 +100,68 @@ async function listUndismissedNotifications(client: DynamoDBDocumentClient): Pro
   return notifications;
 }
 
+/**
+ * List ALL notifications (dismissed and undismissed), undismissed first, then by createdAt descending.
+ */
+async function listAllNotifications(client: DynamoDBDocumentClient): Promise<Notification[]> {
+  const result = await client.send(
+    new ScanCommand({
+      TableName: TABLE_NOTIFICATIONS,
+      FilterExpression: 'begins_with(PK, :prefix)',
+      ExpressionAttributeValues: {
+        ':prefix': 'NOTIFICATION#',
+      },
+    })
+  );
+
+  const notifications = (result.Items || []).map(
+    (item) => cleanItem(item as Record<string, unknown>) as Notification
+  );
+
+  // Sort: undismissed first, then within each group by createdAt descending
+  notifications.sort((a, b) => {
+    if (a.dismissed !== b.dismissed) {
+      return a.dismissed ? 1 : -1; // undismissed (false) comes first
+    }
+    return b.createdAt.localeCompare(a.createdAt);
+  });
+
+  return notifications;
+}
+
+/**
+ * Dismiss all undismissed notifications. Returns the count of notifications dismissed.
+ */
+async function dismissAllNotifications(client: DynamoDBDocumentClient): Promise<number> {
+  // First scan for all undismissed notifications
+  const undismissed = await listUndismissedNotifications(client);
+
+  if (undismissed.length === 0) {
+    return 0;
+  }
+
+  // Update each one to dismissed
+  await Promise.all(
+    undismissed.map((n) =>
+      client.send(
+        new UpdateCommand({
+          TableName: TABLE_NOTIFICATIONS,
+          Key: { PK: `NOTIFICATION#${n.id}`, SK: `NOTIFICATION#${n.id}` },
+          UpdateExpression: 'SET dismissed = :dismissed',
+          ExpressionAttributeValues: { ':dismissed': true },
+        })
+      )
+    )
+  );
+
+  return undismissed.length;
+}
+
 export {
   createNotification,
   getNotification,
   dismissNotification,
   listUndismissedNotifications,
+  listAllNotifications,
+  dismissAllNotifications,
 };

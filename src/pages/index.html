@@ -1223,6 +1223,169 @@
     .bundle-tasks-table tr.task-done td.task-description {
       text-decoration: line-through;
     }
+
+    /* ── Bell notification icon ───────────────────────────── */
+
+    .notif-bell-wrapper {
+      margin-left: auto;
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .notif-bell {
+      cursor: pointer;
+      font-size: 18px;
+      color: #bdc3c7;
+      padding: 8px 12px;
+      border-radius: 4px;
+      user-select: none;
+      transition: color 0.2s;
+      position: relative;
+    }
+
+    .notif-bell:hover {
+      color: #fff;
+    }
+
+    .notif-badge {
+      position: absolute;
+      top: 4px;
+      right: 6px;
+      background: #e74c3c;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      border-radius: 8px;
+      padding: 1px 5px;
+      min-width: 16px;
+      text-align: center;
+      line-height: 14px;
+    }
+
+    .notif-dropdown {
+      position: absolute;
+      top: calc(100% + 4px);
+      right: 0;
+      width: 320px;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+      z-index: 1000;
+    }
+
+    .notif-dropdown-header {
+      padding: 10px 14px 6px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #555;
+      border-bottom: 1px solid #eee;
+    }
+
+    .notif-dropdown-item {
+      padding: 10px 14px;
+      border-bottom: 1px solid #f0f0f0;
+      font-size: 13px;
+      color: #333;
+    }
+
+    .notif-dropdown-item:last-child {
+      border-bottom: none;
+    }
+
+    .notif-dropdown-time {
+      font-size: 11px;
+      color: #999;
+      margin-top: 2px;
+    }
+
+    .notif-dropdown-empty {
+      padding: 16px 14px;
+      font-size: 13px;
+      color: #999;
+      text-align: center;
+    }
+
+    .notif-dropdown-footer {
+      padding: 8px 14px;
+      border-top: 1px solid #eee;
+      text-align: center;
+    }
+
+    .notif-dropdown-footer a {
+      color: #3498db;
+      font-size: 13px;
+      text-decoration: none;
+    }
+
+    .notif-dropdown-footer a:hover {
+      text-decoration: underline;
+    }
+
+    /* ── Notifications page ───────────────────────────────── */
+
+    .notif-page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .notif-list-item {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      padding: 12px 16px;
+      margin-bottom: 8px;
+      font-size: 14px;
+      gap: 12px;
+    }
+
+    .notif-list-item.dismissed {
+      opacity: 0.45;
+      background: #f9f9f9;
+    }
+
+    .notif-list-item-body {
+      flex: 1;
+    }
+
+    .notif-list-item-msg {
+      color: #2c3e50;
+      line-height: 1.4;
+    }
+
+    .notif-list-item-time {
+      font-size: 11px;
+      color: #999;
+      margin-top: 4px;
+    }
+
+    .notif-list-item-time.dismissed {
+      font-style: italic;
+    }
+
+    .btn-dismiss-notif {
+      background: transparent;
+      border: 1px solid #ddd;
+      border-radius: 3px;
+      color: #888;
+      font-size: 14px;
+      padding: 2px 8px;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .btn-dismiss-notif:hover {
+      background: #fdecea;
+      color: #e74c3c;
+      border-color: #e74c3c;
+    }
   </style>
 </head>
 <body>
@@ -1233,6 +1396,10 @@
     <a href="#/bundles">Bundles</a>
     <a href="#/templates">Templates</a>
     <a href="#/recurring">Recurring</a>
+    <div class="notif-bell-wrapper" id="notif-bell-wrapper">
+      <span class="notif-bell" id="notif-bell" title="Notifications">&#x1F514;<span class="notif-badge" id="notif-badge" style="display:none">0</span></span>
+      <div class="notif-dropdown" id="notif-dropdown" style="display:none"></div>
+    </div>
   </nav>
   <div id="app"></div>
   <script src="/public/api.js"></script>
