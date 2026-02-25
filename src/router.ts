@@ -311,7 +311,7 @@ async function route(event: LambdaEvent, client: DynamoDBDocumentClient): Promis
     // ── Notification routes ─────────────────────────────────────
 
     if (reqPath.startsWith('/api/notifications')) {
-      const result = await handleNotificationRoutes(reqPath, method, event.body || null);
+      const result = await handleNotificationRoutes(reqPath, method, event.body || null, event.queryStringParameters || null);
       if (result) return result;
     }
 

@@ -115,10 +115,10 @@ describe('Home dashboard (issue #26)', () => {
       assert.ok(result.body.includes('function loadDashboardTasks'), 'should have loadDashboardTasks');
     });
 
-    it('app.js contains loadNotifications function', async () => {
+    it('app.js contains refreshBellBadge function (replaces loadNotifications)', async () => {
       const event = { httpMethod: 'GET', path: '/public/app.js' };
       const result = await handler(event, {});
-      assert.ok(result.body.includes('function loadNotifications'), 'should have loadNotifications');
+      assert.ok(result.body.includes('function refreshBellBadge'), 'should have refreshBellBadge');
     });
 
     it('app.js contains assigned-to-me toggle logic', async () => {
@@ -275,6 +275,20 @@ describe('Home dashboard (issue #26)', () => {
       assert.ok(result.body.includes('/dismiss'), 'should include dismiss endpoint');
       assert.ok(result.body.includes("method: 'PUT'"), 'should use PUT method for dismiss');
     });
+
+    it('api.js contains listAll function calling ?all=true', async () => {
+      const event = { httpMethod: 'GET', path: '/public/api.js' };
+      const result = await handler(event, {});
+      assert.ok(result.body.includes('listAll'), 'should have listAll function');
+      assert.ok(result.body.includes('all=true'), 'listAll should use ?all=true');
+    });
+
+    it('api.js contains dismissAll function', async () => {
+      const event = { httpMethod: 'GET', path: '/public/api.js' };
+      const result = await handler(event, {});
+      assert.ok(result.body.includes('dismissAll'), 'should have dismissAll function');
+      assert.ok(result.body.includes('dismiss-all'), 'dismissAll should call /dismiss-all');
+    });
   });
 
   describe('Notifications API (backend)', () => {
@@ -286,6 +300,30 @@ describe('Home dashboard (issue #26)', () => {
       assert.ok(Array.isArray(body.notifications), 'should return notifications array');
     });
 
+    it('GET /api/notifications?all=true returns 200 with notifications array', async () => {
+      const event = {
+        httpMethod: 'GET',
+        path: '/api/notifications',
+        queryStringParameters: { all: 'true' },
+      };
+      const result = await handler(event, {});
+      assert.strictEqual(result.statusCode, 200);
+      const body = JSON.parse(result.body);
+      assert.ok(Array.isArray(body.notifications), 'should return notifications array');
+    });
+
+    it('PUT /api/notifications/dismiss-all returns 200 with count', async () => {
+      const event = {
+        httpMethod: 'PUT',
+        path: '/api/notifications/dismiss-all',
+        body: '{}',
+      };
+      const result = await handler(event, {});
+      assert.strictEqual(result.statusCode, 200);
+      const body = JSON.parse(result.body);
+      assert.ok(typeof body.count === 'number', 'should return count number');
+    });
+
     it('PUT /api/notifications/nonexistent/dismiss returns 404', async () => {
       const event = {
         httpMethod: 'PUT',
@@ -294,6 +332,68 @@ describe('Home dashboard (issue #26)', () => {
       };
       const result = await handler(event, {});
       assert.strictEqual(result.statusCode, 404);
+    });
+  });
+
+  describe('Bell icon and notifications view (index.html + app.js)', () => {
+    it('index.html contains notif-bell-wrapper element', async () => {
+      const event = { httpMethod: 'GET', path: '/' };
+      const result = await handler(event, {});
+      assert.ok(result.body.includes('notif-bell-wrapper'), 'should have notif-bell-wrapper');
+    });
+
+    it('index.html contains notif-bell element with id', async () => {
+      const event = { httpMethod: 'GET', path: '/' };
+      const result = await handler(event, {});
+      assert.ok(result.body.includes('id="notif-bell"'), 'should have notif-bell id');
+    });
+
+    it('index.html contains notif-badge element', async () => {
+      const event = { httpMethod: 'GET', path: '/' };
+      const result = await handler(event, {});
+      assert.ok(result.body.includes('notif-badge'), 'should have notif-badge element');
+    });
+
+    it('index.html contains notif-dropdown CSS', async () => {
+      const event = { httpMethod: 'GET', path: '/' };
+      const result = await handler(event, {});
+      assert.ok(result.body.includes('.notif-dropdown'), 'should have notif-dropdown CSS');
+    });
+
+    it('app.js contains #/notifications route', async () => {
+      const event = { httpMethod: 'GET', path: '/public/app.js' };
+      const result = await handler(event, {});
+      assert.ok(result.body.includes("'#/notifications': renderNotifications"), 'should have notifications route');
+    });
+
+    it('app.js contains renderNotifications function', async () => {
+      const event = { httpMethod: 'GET', path: '/public/app.js' };
+      const result = await handler(event, {});
+      assert.ok(result.body.includes('function renderNotifications'), 'should have renderNotifications');
+    });
+
+    it('app.js contains refreshBellBadge function', async () => {
+      const event = { httpMethod: 'GET', path: '/public/app.js' };
+      const result = await handler(event, {});
+      assert.ok(result.body.includes('function refreshBellBadge'), 'should have refreshBellBadge');
+    });
+
+    it('app.js contains initBell function', async () => {
+      const event = { httpMethod: 'GET', path: '/public/app.js' };
+      const result = await handler(event, {});
+      assert.ok(result.body.includes('function initBell'), 'should have initBell');
+    });
+
+    it('app.js contains formatRelativeTime function', async () => {
+      const event = { httpMethod: 'GET', path: '/public/app.js' };
+      const result = await handler(event, {});
+      assert.ok(result.body.includes('function formatRelativeTime'), 'should have formatRelativeTime');
+    });
+
+    it('app.js does not render #notification-bar in dashboard', async () => {
+      const event = { httpMethod: 'GET', path: '/public/app.js' };
+      const result = await handler(event, {});
+      assert.ok(!result.body.includes("'notification-bar'"), 'should not have notification-bar in app.js');
     });
   });
 });

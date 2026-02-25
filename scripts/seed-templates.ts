@@ -1479,17 +1479,21 @@ async function seed(force = false): Promise<void> {
   // Create tables if they don't exist
   await createTables(client);
 
-  // Check if templates already exist
+  // Check if the specific seeded templates already exist (by Grace's defaultAssigneeId and known types)
   const existing = await listTemplates(client);
+  const GRACE_TYPES = DEFAULT_TEMPLATES.map((t) => t.type);
+  const seeded = existing.filter(
+    (t) => t.defaultAssigneeId === GRACE_ID && GRACE_TYPES.includes(t.type)
+  );
 
-  if (force && existing.length > 0) {
-    console.log(`Force flag set. Deleting ${existing.length} existing templates...`);
-    for (const t of existing) {
+  if (force && seeded.length > 0) {
+    console.log(`Force flag set. Deleting ${seeded.length} seeded templates...`);
+    for (const t of seeded) {
       await deleteTemplate(client, t.id);
       console.log(`  Deleted template: ${t.name} (${t.id})`);
     }
-  } else if (existing.length > 0) {
-    console.log(`Templates already exist (${existing.length} found). Skipping seed.`);
+  } else if (seeded.length >= DEFAULT_TEMPLATES.length) {
+    console.log(`Seeded templates already exist (${seeded.length} found). Skipping seed.`);
     return;
   }
 

@@ -283,11 +283,10 @@ test.describe('Home dashboard (issue #26)', () => {
       expect(Array.isArray(listData.notifications)).toBeTruthy();
     });
 
-    test('notification bar container is rendered on dashboard', async ({ page }) => {
+    test('bell icon is visible in the nav bar on the dashboard', async ({ page }) => {
       await page.goto('/#/');
-      // The notification bar container should exist in the DOM
-      // (it may be empty/hidden when there are no notifications, which is correct)
-      await expect(page.locator('#notification-bar')).toBeAttached();
+      // The bell icon should be visible in the nav bar
+      await expect(page.locator('#notif-bell')).toBeVisible();
     });
   });
 
