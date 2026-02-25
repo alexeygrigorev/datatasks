@@ -1205,7 +1205,7 @@
       border-top: 1px solid #eee;
     }
 
-    /* Bundle detail tasks table */
+    /* Bundle detail tasks table (legacy compat class, now on container div) */
     .bundle-tasks-table th,
     .bundle-tasks-table td {
       padding: 6px 10px;
@@ -1222,6 +1222,99 @@
 
     .bundle-tasks-table tr.task-done td.task-description {
       text-decoration: line-through;
+    }
+
+    /* ── Empty bundle link slot highlight ─────────────────────────── */
+
+    .bundle-link-row--empty .bundle-link-url-input {
+      border-color: #e67e22;
+      background: #fff8f0;
+    }
+
+    .bundle-link-row--empty .bundle-link-label {
+      color: #e67e22;
+    }
+
+    /* ── Compact task checklist ───────────────────────────────────── */
+
+    .task-checklist {
+      margin-bottom: 24px;
+    }
+
+    .task-section-heading {
+      font-size: 12px;
+      font-weight: 600;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin: 12px 0 6px 0;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #eee;
+    }
+
+    .task-checklist-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 8px 12px;
+      background: #fff;
+      border: 1px solid #e8e8e8;
+      border-radius: 5px;
+      margin-bottom: 5px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+      transition: box-shadow 0.15s;
+    }
+
+    .task-checklist-row:hover {
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    .task-checklist-row.task-done {
+      opacity: 0.65;
+    }
+
+    .task-checklist-row.task-done .task-description {
+      text-decoration: line-through;
+      color: #999;
+    }
+
+    /* Milestone task: accent left border */
+    .task-checklist-row.milestone-task-row {
+      border-left: 3px solid #e67e22;
+    }
+
+    .task-checklist-row.milestone-task-row .task-description {
+      font-weight: 600;
+    }
+
+    .task-checklist-checkbox-col {
+      flex: 0 0 auto;
+      padding-top: 1px;
+    }
+
+    .task-checklist-body {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .task-checklist-main-line {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      flex-wrap: wrap;
+    }
+
+    .task-checklist-meta {
+      margin-top: 3px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .task-meta-date {
+      font-size: 11px;
+      color: #aaa;
     }
   </style>
 </head>

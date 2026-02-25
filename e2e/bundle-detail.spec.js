@@ -574,12 +574,273 @@ test.describe('Bundle detail view (issue #27)', () => {
       await expect(instrLink).toHaveAttribute('href', 'https://docs.google.com/instructions');
       await expect(instrLink).toHaveAttribute('target', '_blank');
 
-      // Comments column should NOT exist in the table
-      const table = page.locator('.bundle-tasks-table');
-      await expect(table).toBeVisible();
-      const headers = table.locator('th');
+      // The instructions link should be inside the same task row (inline, not a separate column)
+      const instrLinkParent = instrRow.locator('.task-checklist-main-line');
+      await expect(instrLinkParent).toBeVisible();
+
+      // Comments column should NOT exist
+      const container = page.locator('.bundle-tasks-table');
+      await expect(container).toBeVisible();
+      const headers = container.locator('th');
       const headerTexts = await headers.allTextContents();
       expect(headerTexts.join(',')).not.toContain('Comment');
+    });
+  });
+
+  // ── Scenario: Grace scans bundle links to see what needs filling ──
+  test.describe('Scenario: Empty bundle link slots are highlighted (issue #35)', () => {
+    let bundleId;
+    const suffix = uid();
+
+    test.beforeAll(async ({ request }) => {
+      const res = await request.post('/api/bundles', {
+        data: {
+          title: 'LinkHighlight ' + suffix,
+          anchorDate: '2026-10-01',
+          bundleLinks: [
+            { name: 'Luma', url: '' },
+            { name: 'YouTube', url: 'https://youtube.com/watch?v=abc' },
+          ],
+        },
+      });
+      expect(res.status()).toBe(201);
+      bundleId = (await res.json()).bundle.id;
+    });
+
+    test.afterAll(async ({ request }) => {
+      if (bundleId) await archiveAndDelete(request, bundleId);
+    });
+
+    test('empty bundle link slot has bundle-link-row--empty class; filled slot does not', async ({ page }) => {
+      await page.goto('/#/bundles');
+      await page.waitForSelector('.bundle-card');
+
+      const card = page.locator('.bundle-card', { hasText: 'LinkHighlight ' + suffix });
+      await card.locator('.bundle-card-title').click();
+      await page.waitForSelector('[data-testid="stage-badge"]');
+
+      const blSection = page.locator('.bundle-links-editable');
+      const linkRows = blSection.locator('.bundle-link-row');
+      expect(await linkRows.count()).toBe(2);
+
+      // Luma row is empty — should have the empty modifier class
+      const lumaRow = linkRows.nth(0);
+      await expect(lumaRow.locator('.bundle-link-label')).toHaveText('Luma');
+      await expect(lumaRow).toHaveClass(/bundle-link-row--empty/);
+
+      // YouTube row is filled — should NOT have the empty modifier class
+      const ytRow = linkRows.nth(1);
+      await expect(ytRow.locator('.bundle-link-label')).toHaveText('YouTube');
+      await expect(ytRow).not.toHaveClass(/bundle-link-row--empty/);
+    });
+  });
+
+  // ── Scenario: References render as named links ──
+  test.describe('Scenario: References render as named clickable links (issue #35)', () => {
+    let bundleId;
+    const suffix = uid();
+
+    test.beforeAll(async ({ request }) => {
+      const res = await request.post('/api/bundles', {
+        data: {
+          title: 'RefLinks ' + suffix,
+          anchorDate: '2026-10-15',
+          references: [
+            { name: 'Process docs', url: 'https://docs.google.com/proc' },
+          ],
+        },
+      });
+      expect(res.status()).toBe(201);
+      bundleId = (await res.json()).bundle.id;
+    });
+
+    test.afterAll(async ({ request }) => {
+      if (bundleId) await archiveAndDelete(request, bundleId);
+    });
+
+    test('reference shows name as link text, no raw URL visible', async ({ page }) => {
+      await page.goto('/#/bundles');
+      await page.waitForSelector('.bundle-card');
+
+      const card = page.locator('.bundle-card', { hasText: 'RefLinks ' + suffix });
+      await card.locator('.bundle-card-title').click();
+      await page.waitForSelector('[data-testid="stage-badge"]');
+
+      const refsSection = page.locator('.references-section');
+      await expect(refsSection).toBeVisible();
+
+      const refLink = refsSection.locator('.reference-link');
+      await expect(refLink).toHaveText('Process docs');
+      await expect(refLink).toHaveAttribute('href', 'https://docs.google.com/proc');
+      await expect(refLink).toHaveAttribute('target', '_blank');
+
+      // Raw URL should NOT be visible as text content
+      const rawText = await refsSection.textContent();
+      expect(rawText).not.toContain('https://docs.google.com/proc');
+    });
+  });
+
+  // ── Scenario: Done tasks are grouped at the bottom ──
+  test.describe('Scenario: Done tasks grouped at bottom (issue #35)', () => {
+    let bundleId;
+    let taskTodo1;
+    let taskTodo2;
+    let taskDone;
+    const suffix = uid();
+
+    test.beforeAll(async ({ request }) => {
+      const bundleRes = await request.post('/api/bundles', {
+        data: {
+          title: 'Grouping ' + suffix,
+          anchorDate: '2026-11-01',
+        },
+      });
+      expect(bundleRes.status()).toBe(201);
+      bundleId = (await bundleRes.json()).bundle.id;
+
+      const r1 = await request.post('/api/tasks', {
+        data: { description: 'Todo task 1 ' + suffix, date: '2026-11-01', bundleId, source: 'template' },
+      });
+      expect(r1.status()).toBe(201);
+      taskTodo1 = await r1.json();
+
+      const r2 = await request.post('/api/tasks', {
+        data: { description: 'Todo task 2 ' + suffix, date: '2026-11-02', bundleId, source: 'template' },
+      });
+      expect(r2.status()).toBe(201);
+      taskTodo2 = await r2.json();
+
+      const r3 = await request.post('/api/tasks', {
+        data: { description: 'Done task ' + suffix, date: '2026-11-03', bundleId, source: 'template' },
+      });
+      expect(r3.status()).toBe(201);
+      taskDone = await r3.json();
+
+      // Mark the third task as done
+      await request.put('/api/tasks/' + taskDone.id, { data: { status: 'done' } });
+    });
+
+    test.afterAll(async ({ request }) => {
+      if (taskTodo1) await request.delete('/api/tasks/' + taskTodo1.id);
+      if (taskTodo2) await request.delete('/api/tasks/' + taskTodo2.id);
+      if (taskDone) await request.delete('/api/tasks/' + taskDone.id);
+      if (bundleId) await archiveAndDelete(request, bundleId);
+    });
+
+    test('active tasks appear before done tasks, done task has task-done class', async ({ page }) => {
+      await page.goto('/#/bundles');
+      await page.waitForSelector('.bundle-card');
+
+      const card = page.locator('.bundle-card', { hasText: 'Grouping ' + suffix });
+      await card.locator('.bundle-card-title').click();
+      await page.waitForSelector('[data-testid="stage-badge"]');
+
+      const doneRow = page.locator('[data-task-row="' + taskDone.id + '"]');
+      await expect(doneRow).toBeVisible();
+      await expect(doneRow).toHaveClass(/task-done/);
+
+      const todo1Row = page.locator('[data-task-row="' + taskTodo1.id + '"]');
+      await expect(todo1Row).toBeVisible();
+      await expect(todo1Row).not.toHaveClass(/task-done/);
+
+      // The done section heading should be visible
+      const doneHeading = page.locator('.task-section-heading');
+      await expect(doneHeading).toBeVisible();
+      await expect(doneHeading).toContainText('Done');
+
+      // The done row should appear AFTER the active rows in DOM order
+      const allRows = page.locator('.task-checklist-row');
+      const count = await allRows.count();
+      expect(count).toBe(3);
+
+      // Find indices of todo and done rows
+      let todo1Idx = -1;
+      let doneIdx = -1;
+      for (let i = 0; i < count; i++) {
+        const attr = await allRows.nth(i).getAttribute('data-task-row');
+        if (attr === taskTodo1.id) todo1Idx = i;
+        if (attr === taskDone.id) doneIdx = i;
+      }
+      expect(todo1Idx).toBeLessThan(doneIdx);
+    });
+  });
+
+  // ── Scenario: Milestone tasks have distinct style ──
+  test.describe('Scenario: Milestone tasks are visually distinct (issue #35)', () => {
+    let bundleId;
+    let milestoneTaskId;
+    let regularTaskId;
+    const suffix = uid();
+
+    test.beforeAll(async ({ request }) => {
+      // Create a template with a milestone task
+      const tmplRes = await request.post('/api/templates', {
+        data: {
+          name: 'MilestoneTest ' + suffix,
+          type: 'test',
+          taskDefinitions: [
+            { refId: 'regular', description: 'Regular task ' + suffix, offsetDays: -1 },
+            { refId: 'milestone', description: 'Milestone task ' + suffix, offsetDays: 0, isMilestone: true, stageOnComplete: 'after-event' },
+          ],
+        },
+      });
+      expect(tmplRes.status()).toBe(201);
+      const tmpl = (await tmplRes.json()).template;
+
+      // Create a bundle from that template
+      const bundleRes = await request.post('/api/bundles', {
+        data: {
+          title: 'MilestoneBundle ' + suffix,
+          anchorDate: '2026-12-01',
+          templateId: tmpl.id,
+        },
+      });
+      expect(bundleRes.status()).toBe(201);
+      const bundleData = await bundleRes.json();
+      bundleId = bundleData.bundle.id;
+
+      // Get the tasks for this bundle
+      const tasksRes = await request.get('/api/bundles/' + bundleId + '/tasks');
+      expect(tasksRes.status()).toBe(200);
+      const tasksBody = await tasksRes.json();
+      const tasks = tasksBody.tasks;
+
+      const milestoneTask = tasks.find(t => t.stageOnComplete === 'after-event');
+      const regularTask = tasks.find(t => t.templateTaskRef === 'regular');
+      expect(milestoneTask).toBeDefined();
+      expect(regularTask).toBeDefined();
+      milestoneTaskId = milestoneTask.id;
+      regularTaskId = regularTask.id;
+
+      // Clean up template (not needed after instantiation)
+      await request.delete('/api/templates/' + tmpl.id);
+    });
+
+    test.afterAll(async ({ request }) => {
+      if (milestoneTaskId) await request.delete('/api/tasks/' + milestoneTaskId);
+      if (regularTaskId) await request.delete('/api/tasks/' + regularTaskId);
+      if (bundleId) await archiveAndDelete(request, bundleId);
+    });
+
+    test('milestone task row has data-testid="milestone-task-row" and is visually distinct', async ({ page }) => {
+      await page.goto('/#/bundles');
+      await page.waitForSelector('.bundle-card');
+
+      const card = page.locator('.bundle-card', { hasText: 'MilestoneBundle ' + suffix });
+      await card.locator('.bundle-card-title').click();
+      await page.waitForSelector('[data-testid="stage-badge"]');
+
+      // Milestone task row has the testid attribute
+      const milestoneRow = page.locator('[data-testid="milestone-task-row"]');
+      await expect(milestoneRow).toBeVisible();
+      await expect(milestoneRow).toHaveAttribute('data-task-row', milestoneTaskId);
+      await expect(milestoneRow).toHaveClass(/milestone-task-row/);
+
+      // Regular task row does NOT have the testid attribute
+      const regularRow = page.locator('[data-task-row="' + regularTaskId + '"]');
+      await expect(regularRow).toBeVisible();
+      await expect(regularRow).not.toHaveAttribute('data-testid', 'milestone-task-row');
+      await expect(regularRow).not.toHaveClass(/milestone-task-row/);
     });
   });
 });
