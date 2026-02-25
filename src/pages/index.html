@@ -931,6 +931,44 @@
       background: #d4edff;
     }
 
+    /* ── Bundle sort control ──────────────────────────────── */
+
+    .bundle-sort-control {
+      display: flex;
+      gap: 0;
+      margin-bottom: 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      overflow: hidden;
+      width: fit-content;
+    }
+
+    .bundle-sort-btn {
+      background: #fff;
+      color: #555;
+      border: none;
+      border-right: 1px solid #ddd;
+      border-radius: 0;
+      padding: 5px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .bundle-sort-btn:last-child {
+      border-right: none;
+    }
+
+    .bundle-sort-btn:hover {
+      background: #f0f0f0;
+    }
+
+    .bundle-sort-btn.active {
+      background: #2c3e50;
+      color: #fff;
+    }
+
     /* ── Bundle group headings ────────────────────────────── */
 
     .bundle-group-heading {

@@ -63,6 +63,7 @@
   var dashboardState = {
     assignedToMe: true,
     currentUserId: GRACE_ID,
+    bundleSortMode: 'date', // 'date' | 'stage' | 'template'
   };
 
   function renderDashboard() {
@@ -92,6 +93,37 @@
     leftHeader.textContent = 'Active Bundles';
     leftHeader.style.cssText = 'margin-bottom:12px;font-size:16px;font-weight:600;';
     leftCol.appendChild(leftHeader);
+
+    // Sort control
+    var sortControl = document.createElement('div');
+    sortControl.className = 'bundle-sort-control';
+    sortControl.setAttribute('data-testid', 'bundle-sort-control');
+
+    var sortModes = [
+      { mode: 'date', label: 'Date', testid: 'sort-btn-date' },
+      { mode: 'stage', label: 'Stage', testid: 'sort-btn-stage' },
+      { mode: 'template', label: 'Template', testid: 'sort-btn-template' },
+    ];
+
+    sortModes.forEach(function (item) {
+      var btn = document.createElement('button');
+      btn.className = 'bundle-sort-btn' + (dashboardState.bundleSortMode === item.mode ? ' active' : '');
+      btn.textContent = item.label;
+      btn.setAttribute('data-testid', item.testid);
+      btn.addEventListener('click', function () {
+        if (dashboardState.bundleSortMode === item.mode) return;
+        dashboardState.bundleSortMode = item.mode;
+        // Update active button
+        sortControl.querySelectorAll('.bundle-sort-btn').forEach(function (b) {
+          b.classList.remove('active');
+        });
+        btn.classList.add('active');
+        loadDashboardBundles();
+      });
+      sortControl.appendChild(btn);
+    });
+
+    leftCol.appendChild(sortControl);
 
     var bundlesContainer = document.createElement('div');
     bundlesContainer.id = 'dashboard-bundles';
@@ -187,6 +219,152 @@
     });
   }
 
+  // Stage display labels (for stage mode headings)
+  var STAGE_ORDER = ['preparation', 'announced', 'after-event', 'done'];
+  var STAGE_LABELS = {
+    'preparation': 'Preparation',
+    'announced': 'Announced',
+    'after-event': 'After Event',
+    'done': 'Done',
+  };
+
+  // Sort helper: ascending by anchorDate, no-date sorts to end
+  function anchorDateCompare(a, b) {
+    var da = a.anchorDate || '';
+    var db = b.anchorDate || '';
+    if (!da && !db) return 0;
+    if (!da) return 1;
+    if (!db) return -1;
+    return da.localeCompare(db);
+  }
+
+  function renderBundleCard(b, taskMap) {
+    var tasks = taskMap[b.id] || [];
+    var doneCount = tasks.filter(function (t) { return t.status === 'done'; }).length;
+    var totalCount = tasks.length;
+
+    var card = document.createElement('div');
+    card.className = 'dashboard-bundle-card';
+    card.setAttribute('data-bundle-id', b.id);
+
+    // Title line with emoji + anchor date on same line
+    var titleDiv = document.createElement('div');
+    titleDiv.className = 'dashboard-bundle-card-title';
+    var titleText = document.createElement('span');
+    titleText.textContent = (b.emoji ? b.emoji + ' ' : '') + (b.title || 'Untitled');
+    titleDiv.appendChild(titleText);
+    if (b.anchorDate) {
+      var dateBadge = document.createElement('span');
+      dateBadge.className = 'badge-anchor-date';
+      dateBadge.textContent = b.anchorDate;
+      titleDiv.appendChild(dateBadge);
+    }
+    card.appendChild(titleDiv);
+
+    // Meta row: tags, progress, stage
+    var metaDiv = document.createElement('div');
+    metaDiv.className = 'dashboard-bundle-card-meta';
+
+    // Tags
+    (b.tags || []).forEach(function (tag) {
+      var tagBadge = document.createElement('span');
+      tagBadge.className = 'badge-tag';
+      tagBadge.textContent = tag;
+      metaDiv.appendChild(tagBadge);
+    });
+
+    // Progress
+    var progressBadge = document.createElement('span');
+    var allDone = totalCount > 0 && doneCount === totalCount;
+    progressBadge.className = 'progress-badge' + (allDone ? ' all-done' : '');
+    progressBadge.textContent = doneCount + '/' + totalCount + ' done';
+    metaDiv.appendChild(progressBadge);
+
+    // Stage
+    var stage = b.stage || 'preparation';
+    var stageBadge = document.createElement('span');
+    stageBadge.className = 'badge-stage ' + stage;
+    stageBadge.textContent = stage;
+    metaDiv.appendChild(stageBadge);
+
+    card.appendChild(metaDiv);
+
+    // Click handler
+    card.addEventListener('click', function () {
+      currentBundleId = b.id;
+      location.hash = '#/bundles';
+    });
+
+    return card;
+  }
+
+  function renderBundlesDate(container, bundles, taskMap) {
+    // Flat list sorted by anchorDate ascending, no headings
+    var sorted = bundles.slice().sort(anchorDateCompare);
+    sorted.forEach(function (b) {
+      container.appendChild(renderBundleCard(b, taskMap));
+    });
+  }
+
+  function renderBundlesStage(container, bundles, taskMap) {
+    // Group by stage, only show non-empty stages, in fixed order
+    var groups = {};
+    bundles.forEach(function (b) {
+      var stage = b.stage || 'preparation';
+      if (!groups[stage]) groups[stage] = [];
+      groups[stage].push(b);
+    });
+
+    STAGE_ORDER.forEach(function (stage) {
+      if (!groups[stage] || groups[stage].length === 0) return;
+      var heading = document.createElement('div');
+      heading.className = 'bundle-group-heading';
+      heading.textContent = STAGE_LABELS[stage] || stage;
+      container.appendChild(heading);
+
+      var sorted = groups[stage].slice().sort(anchorDateCompare);
+      sorted.forEach(function (b) {
+        container.appendChild(renderBundleCard(b, taskMap));
+      });
+    });
+  }
+
+  function renderBundlesTemplate(container, bundles, taskMap, templateMap) {
+    // Group by templateId, "Other" last, sorted by name within groups
+    var groups = {};
+    bundles.forEach(function (b) {
+      var key = b.templateId || '__other__';
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(b);
+    });
+
+    var groupKeys = Object.keys(groups);
+    groupKeys.sort(function (a, b) {
+      if (a === '__other__') return 1;
+      if (b === '__other__') return -1;
+      var nameA = templateMap[a] ? templateMap[a].name : a;
+      var nameB = templateMap[b] ? templateMap[b].name : b;
+      return nameA.localeCompare(nameB);
+    });
+
+    groupKeys.forEach(function (key) {
+      var heading = document.createElement('div');
+      heading.className = 'bundle-group-heading';
+      if (key === '__other__') {
+        heading.textContent = 'Other';
+      } else {
+        var tpl = templateMap[key];
+        heading.textContent = tpl ? (tpl.emoji ? tpl.emoji + ' ' : '') + tpl.name : 'Unknown Template';
+      }
+      container.appendChild(heading);
+
+      var sorted = groups[key].slice().sort(anchorDateCompare);
+      sorted.forEach(function (b) {
+        container.appendChild(renderBundleCard(b, taskMap));
+      });
+    });
+  }
+
   function loadDashboardBundles() {
     var container = document.getElementById('dashboard-bundles');
     if (!container) return;
@@ -214,21 +392,6 @@
         templateMap[t.id] = t;
       });
 
-      // Group by templateId
-      var groups = {};
-      bundles.forEach(function (b) {
-        var key = b.templateId || '__other__';
-        if (!groups[key]) groups[key] = [];
-        groups[key].push(b);
-      });
-
-      // Sort within each group by anchorDate ascending
-      Object.keys(groups).forEach(function (key) {
-        groups[key].sort(function (a, b) {
-          return (a.anchorDate || '').localeCompare(b.anchorDate || '');
-        });
-      });
-
       // Fetch tasks for progress calculation
       var taskPromises = bundles.map(function (b) {
         return api.bundles.tasks(b.id).then(function (taskData) {
@@ -246,88 +409,14 @@
 
         container.innerHTML = '';
 
-        // Render groups
-        var groupKeys = Object.keys(groups);
-        // Sort: named templates first, then "other"
-        groupKeys.sort(function (a, b) {
-          if (a === '__other__') return 1;
-          if (b === '__other__') return -1;
-          var nameA = templateMap[a] ? templateMap[a].name : a;
-          var nameB = templateMap[b] ? templateMap[b].name : b;
-          return nameA.localeCompare(nameB);
-        });
-
-        groupKeys.forEach(function (key) {
-          var heading = document.createElement('div');
-          heading.className = 'bundle-group-heading';
-          if (key === '__other__') {
-            heading.textContent = 'Other';
-          } else {
-            var tpl = templateMap[key];
-            heading.textContent = tpl ? (tpl.emoji ? tpl.emoji + ' ' : '') + tpl.name : 'Unknown Template';
-          }
-          container.appendChild(heading);
-
-          groups[key].forEach(function (b) {
-            var tasks = taskMap[b.id] || [];
-            var doneCount = tasks.filter(function (t) { return t.status === 'done'; }).length;
-            var totalCount = tasks.length;
-
-            var card = document.createElement('div');
-            card.className = 'dashboard-bundle-card';
-            card.setAttribute('data-bundle-id', b.id);
-
-            // Title line with emoji + anchor date on same line
-            var titleDiv = document.createElement('div');
-            titleDiv.className = 'dashboard-bundle-card-title';
-            var titleText = document.createElement('span');
-            titleText.textContent = (b.emoji ? b.emoji + ' ' : '') + (b.title || 'Untitled');
-            titleDiv.appendChild(titleText);
-            if (b.anchorDate) {
-              var dateBadge = document.createElement('span');
-              dateBadge.className = 'badge-anchor-date';
-              dateBadge.textContent = b.anchorDate;
-              titleDiv.appendChild(dateBadge);
-            }
-            card.appendChild(titleDiv);
-
-            // Meta row: tags, progress, stage
-            var metaDiv = document.createElement('div');
-            metaDiv.className = 'dashboard-bundle-card-meta';
-
-            // Tags
-            (b.tags || []).forEach(function (tag) {
-              var tagBadge = document.createElement('span');
-              tagBadge.className = 'badge-tag';
-              tagBadge.textContent = tag;
-              metaDiv.appendChild(tagBadge);
-            });
-
-            // Progress
-            var progressBadge = document.createElement('span');
-            var allDone = totalCount > 0 && doneCount === totalCount;
-            progressBadge.className = 'progress-badge' + (allDone ? ' all-done' : '');
-            progressBadge.textContent = doneCount + '/' + totalCount + ' done';
-            metaDiv.appendChild(progressBadge);
-
-            // Stage
-            var stage = b.stage || 'preparation';
-            var stageBadge = document.createElement('span');
-            stageBadge.className = 'badge-stage ' + stage;
-            stageBadge.textContent = stage;
-            metaDiv.appendChild(stageBadge);
-
-            card.appendChild(metaDiv);
-
-            // Click handler
-            card.addEventListener('click', function () {
-              currentBundleId = b.id;
-              location.hash = '#/bundles';
-            });
-
-            container.appendChild(card);
-          });
-        });
+        var mode = dashboardState.bundleSortMode || 'date';
+        if (mode === 'date') {
+          renderBundlesDate(container, bundles, taskMap);
+        } else if (mode === 'stage') {
+          renderBundlesStage(container, bundles, taskMap);
+        } else {
+          renderBundlesTemplate(container, bundles, taskMap, templateMap);
+        }
       });
     }).catch(function (err) {
       container.innerHTML = '';

@@ -190,6 +190,74 @@ describe('Home dashboard (issue #26)', () => {
       const result = await handler(event, {});
       assert.ok(result.body.includes('dashboard-wide'), 'should add dashboard-wide class');
     });
+
+    it('app.js contains bundleSortMode in dashboardState defaulting to date', async () => {
+      const event = { httpMethod: 'GET', path: '/public/app.js' };
+      const result = await handler(event, {});
+      assert.ok(result.body.includes("bundleSortMode: 'date'"), 'bundleSortMode should default to date');
+    });
+
+    it('app.js contains bundle-sort-control data-testid', async () => {
+      const event = { httpMethod: 'GET', path: '/public/app.js' };
+      const result = await handler(event, {});
+      assert.ok(result.body.includes('bundle-sort-control'), 'should have bundle-sort-control element');
+      assert.ok(result.body.includes('sort-btn-date'), 'should have sort-btn-date testid');
+      assert.ok(result.body.includes('sort-btn-stage'), 'should have sort-btn-stage testid');
+      assert.ok(result.body.includes('sort-btn-template'), 'should have sort-btn-template testid');
+    });
+
+    it('app.js contains renderBundlesDate function', async () => {
+      const event = { httpMethod: 'GET', path: '/public/app.js' };
+      const result = await handler(event, {});
+      assert.ok(result.body.includes('function renderBundlesDate'), 'should have renderBundlesDate function');
+    });
+
+    it('app.js contains renderBundlesStage function', async () => {
+      const event = { httpMethod: 'GET', path: '/public/app.js' };
+      const result = await handler(event, {});
+      assert.ok(result.body.includes('function renderBundlesStage'), 'should have renderBundlesStage function');
+    });
+
+    it('app.js contains renderBundlesTemplate function', async () => {
+      const event = { httpMethod: 'GET', path: '/public/app.js' };
+      const result = await handler(event, {});
+      assert.ok(result.body.includes('function renderBundlesTemplate'), 'should have renderBundlesTemplate function');
+    });
+
+    it('app.js STAGE_ORDER includes all four stages', async () => {
+      const event = { httpMethod: 'GET', path: '/public/app.js' };
+      const result = await handler(event, {});
+      assert.ok(result.body.includes("'preparation'"), 'should include preparation stage');
+      assert.ok(result.body.includes("'announced'"), 'should include announced stage');
+      assert.ok(result.body.includes("'after-event'"), 'should include after-event stage');
+      assert.ok(result.body.includes("'done'"), 'should include done stage');
+    });
+
+    it('app.js STAGE_LABELS maps after-event to After Event', async () => {
+      const event = { httpMethod: 'GET', path: '/public/app.js' };
+      const result = await handler(event, {});
+      assert.ok(result.body.includes("'After Event'"), 'should have After Event label');
+    });
+  });
+
+  describe('index.html bundle sort control CSS (issue #32)', () => {
+    it('index.html contains .bundle-sort-control CSS', async () => {
+      const event = { httpMethod: 'GET', path: '/' };
+      const result = await handler(event, {});
+      assert.ok(result.body.includes('.bundle-sort-control'), 'should have .bundle-sort-control CSS');
+    });
+
+    it('index.html contains .bundle-sort-btn CSS', async () => {
+      const event = { httpMethod: 'GET', path: '/' };
+      const result = await handler(event, {});
+      assert.ok(result.body.includes('.bundle-sort-btn'), 'should have .bundle-sort-btn CSS');
+    });
+
+    it('index.html contains .bundle-sort-btn.active CSS', async () => {
+      const event = { httpMethod: 'GET', path: '/' };
+      const result = await handler(event, {});
+      assert.ok(result.body.includes('.bundle-sort-btn.active'), 'should have .bundle-sort-btn.active CSS');
+    });
   });
 
   describe('api.js notifications namespace', () => {
