@@ -1,5 +1,9 @@
 const { test, expect } = require('@playwright/test');
 
+function uid() {
+  return Math.random().toString(36).slice(2, 8);
+}
+
 // Helper to create a notification via API
 async function createNotification(request, message) {
   // Use the cron-style internal creation endpoint doesn't exist publicly,
@@ -270,8 +274,71 @@ test.describe('Notification bell UI (issue #30)', () => {
   // UI: Dismiss all from notifications page
   // ──────────────────────────────────────────────────────────────────
 
+  test.describe('Scenario: Individual notification dismiss control is accessible', () => {
+    test('dismiss button has a descriptive accessible name and pending state', async ({ page, request }) => {
+      const name = 'Accessible Dismiss Template ' + uid();
+      let templateId;
+      let bundleId;
+
+      try {
+        await page.route('**/api/notifications/*/dismiss', async (route) => {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          await route.continue();
+        });
+
+        const tmplRes = await request.post('/api/templates', {
+          data: {
+            name,
+            type: 'test',
+            triggerType: 'automatic',
+            triggerSchedule: '0 9 * * *',
+            triggerLeadDays: 1,
+            taskDefinitions: [
+              { refId: 'task1', description: 'Task', offsetDays: 0 },
+            ],
+          },
+        });
+        expect(tmplRes.status()).toBe(201);
+        templateId = (await tmplRes.json()).template.id;
+
+        await request.post('/api/cron/run');
+
+        const bundlesRes = await request.get('/api/bundles');
+        const bundles = (await bundlesRes.json()).bundles || [];
+        const bundle = bundles.find(function (b) { return b.templateId === templateId; });
+        bundleId = bundle && bundle.id;
+
+        await page.goto('/#/notifications');
+        const dismissBtn = page.getByRole('button', { name: new RegExp('Dismiss notification: .*' + name) });
+        await expect(dismissBtn).toBeVisible();
+        await dismissBtn.click();
+
+        const pendingBtn = page.getByRole('button', { name: new RegExp('Dismissing notification: .*' + name) });
+        await expect(pendingBtn).toBeDisabled();
+        await expect(pendingBtn).toHaveText('...');
+        await expect(pendingBtn).toHaveAttribute('aria-busy', 'true');
+
+        await expect(page.locator('[data-notif-item]', { hasText: name })).toHaveClass(/dismissed/);
+        await expect(page.locator('[data-notif-item]', { hasText: name })).toContainText('dismissed');
+      } finally {
+        if (bundleId) {
+          await request.put('/api/bundles/' + bundleId + '/archive');
+          await request.delete('/api/bundles/' + bundleId);
+        }
+        if (templateId) {
+          await request.delete('/api/templates/' + templateId);
+        }
+      }
+    });
+  });
+
   test.describe('Scenario: User dismisses all notifications from full view', () => {
     test('clicking dismiss-all button calls the API and refreshes', async ({ page, request }) => {
+      await page.route('**/api/notifications/dismiss-all', async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        await route.continue();
+      });
+
       await page.goto('/#/notifications');
       await page.waitForTimeout(500);
 
@@ -279,9 +346,15 @@ test.describe('Notification bell UI (issue #30)', () => {
       const dismissAllBtn = page.locator('#dismiss-all-btn');
       await expect(dismissAllBtn).toBeVisible();
       await dismissAllBtn.click();
+      await expect(dismissAllBtn).toBeDisabled();
+      await expect(dismissAllBtn).toHaveText('Dismissing...');
+      await expect(dismissAllBtn).toHaveAttribute('aria-busy', 'true');
 
       // Wait for reload
-      await page.waitForTimeout(500);
+      await expect(dismissAllBtn).toHaveText('Dismiss all');
+      await expect(dismissAllBtn).toBeEnabled();
+      await expect(dismissAllBtn).not.toHaveAttribute('aria-busy', 'true');
+      await expect(page.locator('.success-banner')).toContainText('Notifications dismissed.');
 
       // Bell badge should not be visible (no undismissed)
       const badge = page.locator('#notif-badge');

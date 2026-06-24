@@ -38,10 +38,11 @@
 
   function renderSignIn() {
     // Hide nav links (keep only brand visible)
-    var navLinks = nav.querySelectorAll('.nav-link, #signout-btn');
+    var navLinks = nav.querySelectorAll('.nav-link, #signout-btn, #nav-menu-toggle');
     navLinks.forEach(function (el) {
       el.style.display = 'none';
     });
+    setMobileNavOpen(false);
 
     clearApp();
     app.classList.remove('dashboard-wide');
@@ -89,24 +90,31 @@
     container.appendChild(card);
     app.appendChild(container);
 
+    var loginPending = false;
+
     function doLogin() {
+      if (loginPending) return;
       var email = document.getElementById('signin-email').value.trim();
       var password = document.getElementById('signin-password').value;
       var btn = document.getElementById('signin-submit');
       var err = document.getElementById('signin-error');
 
+      loginPending = true;
       err.style.display = 'none';
       btn.disabled = true;
       btn.textContent = 'Signing in...';
+      btn.setAttribute('aria-busy', 'true');
 
       api.auth.login(email, password).then(function (data) {
         setSession(data.token, data.user);
         startApp(data.user);
       }).catch(function () {
+        loginPending = false;
         err.textContent = 'Invalid email or password';
         err.style.display = 'block';
         btn.disabled = false;
         btn.textContent = 'Sign in';
+        btn.removeAttribute('aria-busy');
       });
     }
 
@@ -119,6 +127,7 @@
     document.getElementById('signin-email').addEventListener('keydown', function (e) {
       if (e.key === 'Enter') doLogin();
     });
+    document.getElementById('signin-email').focus();
   }
 
   // ── App startup ──────────────────────────────────────────────────
@@ -129,6 +138,13 @@
     navLinks.forEach(function (el) {
       el.style.display = '';
     });
+    var navToggle = document.getElementById('nav-menu-toggle');
+    if (navToggle) {
+      navToggle.style.display = '';
+      navToggle.onclick = function () {
+        setMobileNavOpen(!nav.classList.contains('nav-open'));
+      };
+    }
 
     // Show sign-out button (remove old if exists)
     var oldSignOut = document.getElementById('signout-btn');
@@ -137,7 +153,7 @@
     var signOutBtn = document.createElement('button');
     signOutBtn.id = 'signout-btn';
     signOutBtn.textContent = 'Sign out';
-    signOutBtn.style.cssText = 'margin-left:auto;background:transparent;border:1px solid #bdc3c7;color:#bdc3c7;padding:6px 14px;border-radius:4px;font-size:13px;cursor:pointer;font-family:inherit;';
+    signOutBtn.style.cssText = 'background:transparent;border:1px solid #bdc3c7;color:#bdc3c7;padding:6px 14px;border-radius:4px;font-size:13px;cursor:pointer;font-family:inherit;';
     signOutBtn.addEventListener('mouseenter', function () {
       signOutBtn.style.background = 'rgba(255,255,255,0.1)';
     });
@@ -150,7 +166,7 @@
         renderSignIn();
       });
     });
-    nav.appendChild(signOutBtn);
+    (document.getElementById('nav-menu') || nav).appendChild(signOutBtn);
 
     // Set current user ID from stored user
     dashboardState.currentUserId = user ? user.id : '';
@@ -175,10 +191,102 @@
   }
 
   function showError(msg) {
+    showNotice(msg, 'error');
+  }
+
+  function showSuccess(msg) {
+    showNotice(msg, 'success');
+  }
+
+  function showNotice(msg, type) {
+    var existing = app.querySelectorAll('.flash-banner, .error-banner');
+    existing.forEach(function (banner) { banner.remove(); });
     var banner = document.createElement('div');
-    banner.className = 'error-banner';
+    banner.className = 'flash-banner ' + (type === 'success' ? 'success-banner' : 'error-banner');
+    banner.setAttribute('role', type === 'success' ? 'status' : 'alert');
     banner.textContent = msg;
     app.prepend(banner);
+    if (type === 'success') {
+      setTimeout(function () {
+        if (banner.parentNode) banner.remove();
+      }, 3500);
+    }
+  }
+
+  function setButtonBusy(btn, busy, label, busyLabel) {
+    if (!btn) return;
+    if (busy) {
+      btn.setAttribute('data-idle-label', label || btn.textContent);
+      btn.setAttribute('aria-busy', 'true');
+      btn.disabled = true;
+      btn.textContent = busyLabel || 'Working...';
+    } else {
+      btn.disabled = false;
+      btn.textContent = btn.getAttribute('data-idle-label') || label || btn.textContent;
+      btn.removeAttribute('data-idle-label');
+      btn.removeAttribute('aria-busy');
+    }
+  }
+
+  function makeKeyboardCard(card, label, onActivate) {
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    if (label) card.setAttribute('aria-label', label);
+    card.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      onActivate(e);
+    });
+  }
+
+  function renderBundleBadgeLink(bundleId, title) {
+    var safeTitle = title || 'Untitled';
+    return '<a class="badge-bundle" href="#/bundles" data-nav-bundle="' + escapeHtml(bundleId) + '" aria-label="Open bundle ' + escapeHtml(safeTitle) + '">' + escapeHtml(safeTitle) + '</a>';
+  }
+
+  function instructionLabel(description) {
+    return 'Open instructions for ' + (description || 'task');
+  }
+
+  function renderInstructionLink(url, description) {
+    return '<a class="instructions-link" href="' + escapeHtml(url) + '" target="_blank" rel="noopener" title="Instructions" aria-label="' + escapeHtml(instructionLabel(description)) + '"><span aria-hidden="true">\u{1F4CB}</span></a>';
+  }
+
+  function renderEmptyState(title, body, actions) {
+    var html = '<div class="empty-state empty-state-rich">' +
+      '<div class="empty-state-title">' + escapeHtml(title) + '</div>';
+    if (body) {
+      html += '<div class="empty-state-body">' + escapeHtml(body) + '</div>';
+    }
+    if (actions && actions.length) {
+      html += '<div class="empty-state-actions">';
+      actions.forEach(function (action, index) {
+        var className = index === 0 ? 'empty-state-action primary' : 'empty-state-action secondary';
+        html += '<a class="' + className + '" href="' + escapeHtml(action.href) + '">' + escapeHtml(action.label) + '</a>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function setMobileNavOpen(open) {
+    nav.classList.toggle('nav-open', open);
+    var toggle = document.getElementById('nav-menu-toggle');
+    if (!toggle) return;
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    toggle.setAttribute('aria-label', open ? 'Close navigation menu' : 'Open navigation menu');
+    toggle.innerHTML = open ? '&times;' : '&#9776;';
+  }
+
+  function initMobileNavKeyboard() {
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape' || !nav.classList.contains('nav-open')) return;
+      e.preventDefault();
+      setMobileNavOpen(false);
+      var toggle = document.getElementById('nav-menu-toggle');
+      if (toggle) toggle.focus();
+    });
   }
 
   function clearApp() {
@@ -212,10 +320,17 @@
     // Update active nav link
     var links = document.querySelectorAll('nav .nav-link');
     links.forEach(function (a) {
-      a.classList.toggle('active', a.getAttribute('href') === hash);
+      var isCurrent = a.getAttribute('href') === hash;
+      a.classList.toggle('active', isCurrent);
+      if (isCurrent) {
+        a.setAttribute('aria-current', 'page');
+      } else {
+        a.removeAttribute('aria-current');
+      }
     });
     // Close dropdown on navigation
     closeNotifDropdown();
+    setMobileNavOpen(false);
     // Refresh bell badge
     refreshBellBadge();
     handler();
@@ -223,6 +338,8 @@
 
   window.addEventListener('hashchange', navigate);
   window.addEventListener('DOMContentLoaded', function () {
+    initSkipLink();
+    initMobileNavKeyboard();
     initBell();
     var token = getStoredToken();
     var user = getStoredUser();
@@ -235,18 +352,31 @@
     }
   });
 
+  function initSkipLink() {
+    var skipLink = document.getElementById('skip-link');
+    if (!skipLink) return;
+    skipLink.addEventListener('click', function (e) {
+      e.preventDefault();
+      app.focus();
+    });
+  }
+
   // ── Bell notification icon ─────────────────────────────────────
 
   function refreshBellBadge() {
     api.notifications.list().then(function (data) {
       var count = (data.notifications || []).length;
       var badge = document.getElementById('notif-badge');
+      var bell = document.getElementById('notif-bell');
       if (!badge) return;
       if (count > 0) {
         badge.textContent = count;
         badge.style.display = '';
       } else {
         badge.style.display = 'none';
+      }
+      if (bell) {
+        bell.setAttribute('aria-label', count > 0 ? 'Notifications, ' + count + ' unread' : 'Notifications');
       }
     }).catch(function () {
       // silently ignore
@@ -256,12 +386,16 @@
   function closeNotifDropdown() {
     var dropdown = document.getElementById('notif-dropdown');
     if (dropdown) dropdown.style.display = 'none';
+    var bell = document.getElementById('notif-bell');
+    if (bell) bell.setAttribute('aria-expanded', 'false');
   }
 
   function openNotifDropdown() {
     var dropdown = document.getElementById('notif-dropdown');
     if (!dropdown) return;
 
+    var bell = document.getElementById('notif-bell');
+    if (bell) bell.setAttribute('aria-expanded', 'true');
     dropdown.style.display = 'block';
     dropdown.innerHTML = '<div class="notif-dropdown-header">Notifications</div><div class="notif-dropdown-empty">Loading...</div>';
 
@@ -325,11 +459,27 @@
       }
     });
 
+    bell.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      closeNotifDropdown();
+      bell.focus();
+    });
+
     document.addEventListener('click', function (e) {
       var wrapper2 = document.getElementById('notif-bell-wrapper');
       if (wrapper2 && !wrapper2.contains(e.target)) {
         closeNotifDropdown();
       }
+    });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      var dropdown = document.getElementById('notif-dropdown');
+      if (!dropdown || dropdown.style.display === 'none' || dropdown.style.display === '') return;
+      closeNotifDropdown();
+      var bell2 = document.getElementById('notif-bell');
+      if (bell2) bell2.focus();
     });
 
     refreshBellBadge();
@@ -373,8 +523,8 @@
 
     // Left column header
     var leftHeader = document.createElement('h3');
+    leftHeader.className = 'dashboard-section-title';
     leftHeader.textContent = 'Active Bundles';
-    leftHeader.style.cssText = 'margin-bottom:12px;font-size:16px;font-weight:600;';
     leftCol.appendChild(leftHeader);
 
     // Sort control
@@ -525,7 +675,12 @@
             dismissBtn.className = 'btn-dismiss-notif';
             dismissBtn.textContent = '\u00D7';
             dismissBtn.title = 'Dismiss';
+            dismissBtn.setAttribute('aria-label', 'Dismiss notification: ' + n.message);
             dismissBtn.addEventListener('click', function () {
+              dismissBtn.disabled = true;
+              dismissBtn.textContent = '...';
+              dismissBtn.setAttribute('aria-busy', 'true');
+              dismissBtn.setAttribute('aria-label', 'Dismissing notification: ' + n.message);
               api.notifications.dismiss(n.id).then(function () {
                 item.className = 'notif-list-item dismissed';
                 timeDiv.className = 'notif-list-item-time dismissed';
@@ -534,6 +689,10 @@
                 refreshBellBadge();
               }).catch(function (err) {
                 showError('Failed to dismiss: ' + err.message);
+                dismissBtn.disabled = false;
+                dismissBtn.textContent = '\u00D7';
+                dismissBtn.removeAttribute('aria-busy');
+                dismissBtn.setAttribute('aria-label', 'Dismiss notification: ' + n.message);
               });
             });
             item.appendChild(dismissBtn);
@@ -550,13 +709,15 @@
     loadNotifList();
 
     dismissAllBtn.addEventListener('click', function () {
-      dismissAllBtn.disabled = true;
+      setButtonBusy(dismissAllBtn, true, 'Dismiss all', 'Dismissing...');
       api.notifications.dismissAll().then(function () {
         loadNotifList();
         refreshBellBadge();
+        showSuccess('Notifications dismissed.');
       }).catch(function (err) {
         showError('Failed to dismiss all: ' + err.message);
-        dismissAllBtn.disabled = false;
+      }).finally(function () {
+        setButtonBusy(dismissAllBtn, false, 'Dismiss all');
       });
     });
   }
@@ -631,11 +792,13 @@
 
     card.appendChild(metaDiv);
 
-    // Click handler
-    card.addEventListener('click', function () {
+    function openBundle() {
       currentBundleId = b.id;
       location.hash = '#/bundles';
-    });
+    }
+
+    card.addEventListener('click', openBundle);
+    makeKeyboardCard(card, 'Open bundle ' + (b.title || 'Untitled'), openBundle);
 
     return card;
   }
@@ -724,7 +887,11 @@
       });
 
       if (bundles.length === 0) {
-        container.innerHTML = '<div class="empty-state">No active bundles</div>';
+        container.innerHTML = renderEmptyState(
+          'No active bundles',
+          'Create a bundle to group upcoming work and track progress from this dashboard.',
+          [{ href: '#/bundles', label: 'New bundle' }]
+        );
         return;
       }
 
@@ -789,7 +956,11 @@
       }
 
       if (tasks.length === 0) {
-        container.innerHTML = '<div class="empty-state">No tasks for today</div>';
+        container.innerHTML = renderEmptyState(
+          'No tasks for today',
+          'Use the task list to review upcoming dates or create an ad-hoc task.',
+          [{ href: '#/tasks', label: 'Open tasks' }]
+        );
         return;
       }
 
@@ -848,7 +1019,7 @@
       // Bundle badge
       var bundleBadge;
       if (t.bundleId && bundleMap[t.bundleId]) {
-        bundleBadge = '<a class="badge-bundle" data-nav-bundle="' + escapeHtml(t.bundleId) + '">' + escapeHtml(bundleMap[t.bundleId]) + '</a>';
+        bundleBadge = renderBundleBadgeLink(t.bundleId, bundleMap[t.bundleId]);
       } else {
         bundleBadge = '<span class="badge-adhoc">ad hoc</span>';
       }
@@ -856,7 +1027,7 @@
       // Instructions link icon
       var instructionsHtml = '';
       if (t.instructionsUrl) {
-        instructionsHtml = '<a class="instructions-link" href="' + escapeHtml(t.instructionsUrl) + '" target="_blank" rel="noopener" title="Instructions">\u{1F4CB}</a>';
+        instructionsHtml = renderInstructionLink(t.instructionsUrl, t.description);
       }
 
       // Assignee name
@@ -876,12 +1047,12 @@
 
       html += '<tr' + rowClass + ' data-task-row="' + t.id + '">' +
         '<td class="task-status"><input type="checkbox" class="task-status-checkbox" data-task-id="' + t.id + '" data-status="' + (t.status || 'todo') + '"' + checked + checkboxDisabled + ' /></td>' +
-        '<td>' + escapeHtml(t.date) + '</td>' +
-        '<td class="task-description">' + renderMarkdownLinks(t.description) + '</td>' +
-        '<td>' + bundleBadge + '</td>' +
-        '<td>' + instructionsHtml + '</td>' +
-        '<td>' + assigneeHtml + '</td>' +
-        '<td>' + requiredLinkHtml + '</td>' +
+        '<td data-label="Date">' + escapeHtml(t.date) + '</td>' +
+        '<td class="task-description" data-label="Description">' + renderMarkdownLinks(t.description) + '</td>' +
+        '<td data-label="Bundle">' + bundleBadge + '</td>' +
+        '<td data-label="Info">' + instructionsHtml + '</td>' +
+        '<td data-label="Assignee">' + assigneeHtml + '</td>' +
+        '<td data-label="Required Link">' + requiredLinkHtml + '</td>' +
         '</tr>';
     });
     html += '</tbody></table>';
@@ -1001,7 +1172,7 @@
 
     // Date filter bar
     var header = document.createElement('div');
-    header.style.cssText = 'display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;';
+    header.className = 'task-toolbar';
     header.innerHTML = '<h2>Tasks</h2>' +
       '<input type="date" id="task-date" value="' + today + '" />' +
       '<button class="btn-today" id="btn-today">Today</button>' +
@@ -1009,7 +1180,7 @@
         '<input type="checkbox" id="range-toggle" />' +
         'Range' +
       '</label>' +
-      '<span id="range-end-container" style="display:none;">' +
+      '<span id="range-end-container" class="task-toolbar-range" style="display:none;">' +
         '<span style="font-size:13px;color:#555;">to</span> ' +
         '<input type="date" id="task-date-end" value="' + today + '" />' +
       '</span>';
@@ -1247,7 +1418,11 @@
           : isRange
             ? 'No tasks found for this date range.'
             : 'No tasks found for this date.';
-        container.innerHTML = '<div class="empty-state">' + msg + '</div>';
+        container.innerHTML = renderEmptyState(
+          msg,
+          isRange ? 'Try a wider date range or adjust the filters.' : 'Adjust the filters or create a task for this date.',
+          []
+        );
         return;
       }
 
@@ -1306,7 +1481,7 @@
         // Bundle badge
         var bundleBadge;
         if (t.bundleId && bundleMap[t.bundleId]) {
-          bundleBadge = '<a class="badge-bundle" data-nav-bundle="' + escapeHtml(t.bundleId) + '">' + escapeHtml(bundleMap[t.bundleId]) + '</a>';
+          bundleBadge = renderBundleBadgeLink(t.bundleId, bundleMap[t.bundleId]);
         } else {
           bundleBadge = '<span class="badge-adhoc">ad hoc</span>';
         }
@@ -1314,7 +1489,7 @@
         // Instructions link icon
         var instructionsHtml = '';
         if (t.instructionsUrl) {
-          instructionsHtml = '<a class="instructions-link" href="' + escapeHtml(t.instructionsUrl) + '" target="_blank" rel="noopener" title="Instructions">\u{1F4CB}</a>';
+          instructionsHtml = renderInstructionLink(t.instructionsUrl, t.description);
         }
 
         // Assignee name
@@ -1334,12 +1509,12 @@
 
         html += '<tr' + rowClass + ' data-task-row="' + t.id + '">' +
           '<td class="task-status"><input type="checkbox" class="task-status-checkbox" data-task-id="' + t.id + '" data-status="' + (t.status || 'todo') + '"' + checked + checkboxDisabled + ' /></td>' +
-          '<td>' + escapeHtml(t.date) + '</td>' +
-          '<td class="task-description editable" data-field="description" data-task-id="' + t.id + '">' + renderMarkdownLinks(t.description) + '</td>' +
-          '<td>' + bundleBadge + '</td>' +
-          '<td>' + instructionsHtml + '</td>' +
-          '<td>' + assigneeHtml + '</td>' +
-          '<td>' + requiredLinkHtml + '</td>' +
+          '<td data-label="Date">' + escapeHtml(t.date) + '</td>' +
+          '<td class="task-description editable" data-label="Description" data-field="description" data-task-id="' + t.id + '">' + renderMarkdownLinks(t.description) + '</td>' +
+          '<td data-label="Bundle">' + bundleBadge + '</td>' +
+          '<td data-label="Info">' + instructionsHtml + '</td>' +
+          '<td data-label="Assignee">' + assigneeHtml + '</td>' +
+          '<td data-label="Required Link">' + requiredLinkHtml + '</td>' +
           '</tr>';
       });
       html += '</tbody></table>';
@@ -1474,6 +1649,9 @@
   // ── Bundles View ───────────────────────────────────────────────
 
   var currentBundleId = null;
+  var bundleState = {
+    search: ''
+  };
 
   function renderBundles() {
     clearApp();
@@ -1483,9 +1661,22 @@
       return;
     }
 
-    var header = document.createElement('h2');
-    header.textContent = 'Bundles';
+    var header = document.createElement('div');
+    header.className = 'page-header';
+    header.innerHTML =
+      '<div>' +
+        '<h2>Bundles</h2>' +
+        '<div class="page-subtitle" id="bundle-count">Active and archived work packages</div>' +
+      '</div>' +
+      '<div class="page-actions">' +
+        '<input type="search" id="bundle-search" class="search-input" placeholder="Search bundles" value="' + escapeHtml(bundleState.search) + '" />' +
+      '</div>';
     app.appendChild(header);
+
+    document.getElementById('bundle-search').addEventListener('input', function (e) {
+      bundleState.search = e.target.value.trim().toLowerCase();
+      loadBundles();
+    });
 
     // Create form
     var form = document.createElement('div');
@@ -1520,6 +1711,7 @@
     loadTemplateDropdown();
 
     document.getElementById('bundle-create-btn').addEventListener('click', function () {
+      var btn = document.getElementById('bundle-create-btn');
       var title = document.getElementById('bundle-title').value.trim();
       var anchorDate = document.getElementById('bundle-anchor').value;
       var description = document.getElementById('bundle-desc').value.trim();
@@ -1531,13 +1723,17 @@
       var data = { title: title, anchorDate: anchorDate };
       if (description) data.description = description;
       if (templateId) data.templateId = templateId;
+      setButtonBusy(btn, true, 'Create', 'Creating...');
       api.bundles.create(data).then(function () {
         document.getElementById('bundle-title').value = '';
         document.getElementById('bundle-desc').value = '';
         document.getElementById('bundle-template').value = '';
+        showSuccess('Bundle created.');
         loadBundles();
       }).catch(function (err) {
         showError('Failed to create bundle: ' + err.message);
+      }).finally(function () {
+        setButtonBusy(btn, false, 'Create');
       });
     });
 
@@ -1575,8 +1771,44 @@
 
     api.bundles.list().then(function (data) {
       var bundles = data.bundles || [];
+      var totalCount = bundles.length;
+      var countEl = document.getElementById('bundle-count');
+      if (countEl) {
+        countEl.textContent = totalCount + ' bundle' + (totalCount !== 1 ? 's' : '') + ' available';
+      }
       if (bundles.length === 0) {
-        container.innerHTML = '<div class="empty-state">No bundles yet. Create one to get started.</div>';
+        container.innerHTML = renderEmptyState(
+          'No bundles yet',
+          'Use the form above to create a bundle from scratch or instantiate one from a template.',
+          []
+        );
+        return;
+      }
+
+      if (bundleState.search) {
+        bundles = bundles.filter(function (b) {
+          var haystack = [
+            b.title || '',
+            b.description || '',
+            b.anchorDate || '',
+            b.status || '',
+            b.stage || '',
+            (b.tags || []).join(' ')
+          ].join(' ').toLowerCase();
+          return haystack.indexOf(bundleState.search) !== -1;
+        });
+      }
+
+      if (countEl) {
+        countEl.textContent = bundles.length + ' of ' + totalCount + ' bundle' + (totalCount !== 1 ? 's' : '') + ' shown';
+      }
+
+      if (bundles.length === 0) {
+        container.innerHTML = renderEmptyState(
+          'No bundles match your search',
+          'Clear or broaden the search to see more bundles.',
+          []
+        );
         return;
       }
 
@@ -1610,18 +1842,31 @@
 
           var card = document.createElement('div');
           card.className = 'bundle-card';
+          card.setAttribute('data-card-bundle-id', b.id);
           card.innerHTML =
-            '<a class="bundle-card-title" data-bundle-id="' + b.id + '">' + escapeHtml(b.title) + '</a>' +
+            '<a class="bundle-card-title" href="#/bundles" data-bundle-id="' + b.id + '" aria-label="Open bundle ' + escapeHtml(b.title || 'Untitled') + '">' + escapeHtml(b.title) + '</a>' +
             '<div class="bundle-card-date">' + escapeHtml(b.anchorDate || '') + '</div>' +
             (truncatedDesc ? '<div class="bundle-card-desc">' + escapeHtml(truncatedDesc) + '</div>' : '') +
             '<div class="bundle-card-footer">' +
               '<span class="' + badgeClass + '">' + doneCount + ' / ' + totalCount + ' done</span>' +
-              '<button class="btn-danger" data-delete-bundle="' + b.id + '">Delete</button>' +
+              '<div class="card-footer-actions">' +
+                '<a class="card-action-link" href="#/bundles" data-bundle-id="' + b.id + '">Open bundle</a>' +
+                '<button class="btn-danger" data-delete-bundle="' + b.id + '">Delete</button>' +
+              '</div>' +
             '</div>';
           cardsDiv.appendChild(card);
         });
 
         container.appendChild(cardsDiv);
+
+        container.querySelectorAll('.bundle-card').forEach(function (cardEl) {
+          cardEl.addEventListener('click', function (e) {
+            if (e.target.closest('button')) return;
+            if (e.target.closest('[data-bundle-id]')) return;
+            currentBundleId = cardEl.getAttribute('data-card-bundle-id');
+            renderBundles();
+          });
+        });
 
         // Click on bundle title -> detail view
         container.querySelectorAll('[data-bundle-id]').forEach(function (el) {
@@ -1634,12 +1879,19 @@
 
         // Delete bundle
         container.querySelectorAll('[data-delete-bundle]').forEach(function (btn) {
-          btn.addEventListener('click', function () {
+          btn.addEventListener('click', function (e) {
+            e.stopPropagation();
             var id = btn.getAttribute('data-delete-bundle');
+            var titleEl = btn.closest('.bundle-card').querySelector('.bundle-card-title');
+            var title = titleEl ? titleEl.textContent : 'this bundle';
+            if (!confirm('Delete bundle: "' + title + '"?')) return;
+            setButtonBusy(btn, true, 'Delete', 'Deleting...');
             api.bundles.delete(id).then(function () {
+              showSuccess('Bundle deleted.');
               loadBundles();
             }).catch(function (err) {
               showError('Failed to delete bundle: ' + err.message);
+              setButtonBusy(btn, false, 'Delete');
             });
           });
         });
@@ -1968,6 +2220,7 @@
         instrLink.target = '_blank';
         instrLink.rel = 'noopener';
         instrLink.title = 'Instructions';
+        instrLink.setAttribute('aria-label', instructionLabel(t.description));
         instrLink.innerHTML = '&#x1F4CB;';
         mainLine.appendChild(instrLink);
       }
@@ -2075,6 +2328,9 @@
   // ── Templates View ──────────────────────────────────────────────
 
   var currentTemplateId = null;
+  var templateState = {
+    search: ''
+  };
 
   function renderTemplates() {
     clearApp();
@@ -2084,9 +2340,22 @@
       return;
     }
 
-    var header = document.createElement('h2');
-    header.textContent = 'Templates';
+    var header = document.createElement('div');
+    header.className = 'page-header';
+    header.innerHTML =
+      '<div>' +
+        '<h2>Templates</h2>' +
+        '<div class="page-subtitle" id="template-count">Reusable task blueprints</div>' +
+      '</div>' +
+      '<div class="page-actions">' +
+        '<input type="search" id="template-search" class="search-input" placeholder="Search templates" value="' + escapeHtml(templateState.search) + '" />' +
+      '</div>';
     app.appendChild(header);
+
+    document.getElementById('template-search').addEventListener('input', function (e) {
+      templateState.search = e.target.value.trim().toLowerCase();
+      loadTemplateCards();
+    });
 
     var cardsContainer = document.createElement('div');
     cardsContainer.id = 'templates-container';
@@ -2105,8 +2374,42 @@
 
     api.templates.list().then(function (data) {
       var templates = data.templates || [];
+      var totalCount = templates.length;
+      var countEl = document.getElementById('template-count');
+      if (countEl) {
+        countEl.textContent = totalCount + ' template' + (totalCount !== 1 ? 's' : '') + ' available';
+      }
       if (templates.length === 0) {
-        container.innerHTML = '<div class="empty-state">No templates yet.</div>';
+        container.innerHTML = renderEmptyState(
+          'No templates yet',
+          'Seed or create templates to turn repeatable work into reusable task plans.',
+          []
+        );
+        return;
+      }
+
+      if (templateState.search) {
+        templates = templates.filter(function (t) {
+          var haystack = [
+            t.name || '',
+            t.type || '',
+            t.triggerType || '',
+            (t.tags || []).join(' ')
+          ].join(' ').toLowerCase();
+          return haystack.indexOf(templateState.search) !== -1;
+        });
+      }
+
+      if (countEl) {
+        countEl.textContent = templates.length + ' of ' + totalCount + ' template' + (totalCount !== 1 ? 's' : '') + ' shown';
+      }
+
+      if (templates.length === 0) {
+        container.innerHTML = renderEmptyState(
+          'No templates match your search',
+          'Clear or broaden the search to see more templates.',
+          []
+        );
         return;
       }
 
@@ -2156,12 +2459,24 @@
         var tasksDiv = document.createElement('div');
         tasksDiv.className = 'template-card-tasks';
         tasksDiv.textContent = taskCount + ' task' + (taskCount !== 1 ? 's' : '');
-        card.appendChild(tasksDiv);
 
-        card.addEventListener('click', function () {
+        var footerDiv = document.createElement('div');
+        footerDiv.className = 'template-card-footer';
+        footerDiv.appendChild(tasksDiv);
+
+        var actionSpan = document.createElement('span');
+        actionSpan.className = 'card-action-text';
+        actionSpan.textContent = 'Edit template';
+        footerDiv.appendChild(actionSpan);
+        card.appendChild(footerDiv);
+
+        function openTemplate() {
           currentTemplateId = t.id;
           renderTemplates();
-        });
+        }
+
+        card.addEventListener('click', openTemplate);
+        makeKeyboardCard(card, 'Open template ' + (t.name || 'Unnamed'), openTemplate);
 
         cardsDiv.appendChild(card);
       });
@@ -2207,6 +2522,22 @@
 
     var editor = document.createElement('div');
     editor.className = 'template-editor';
+
+    var editorHeader = document.createElement('div');
+    editorHeader.className = 'template-editor-header';
+    editorHeader.innerHTML =
+      '<div>' +
+        '<h2>' + escapeHtml(template.name || 'Untitled template') + '</h2>' +
+        '<div class="page-subtitle" id="template-editor-summary">Template editor</div>' +
+      '</div>';
+    editor.appendChild(editorHeader);
+
+    var saveBar = document.createElement('div');
+    saveBar.className = 'save-bar template-save-bar';
+    saveBar.innerHTML =
+      '<button class="btn-primary" id="tpl-save-btn">Save</button>' +
+      '<span class="save-feedback" id="tpl-save-feedback">No unsaved changes</span>';
+    editor.appendChild(saveBar);
 
     // ---- Basic Info Section ----
     var basicH3 = document.createElement('h3');
@@ -2307,6 +2638,7 @@
     addRefBtn.textContent = '+ Add Reference';
     addRefBtn.addEventListener('click', function () {
       addReferenceRow(refsContainer, '', '');
+      notifyTemplateEditorChanged(refsContainer);
     });
     editor.appendChild(addRefBtn);
 
@@ -2324,6 +2656,7 @@
     addBldBtn.textContent = '+ Add Bundle Link';
     addBldBtn.addEventListener('click', function () {
       addBundleLinkRow(bldContainer, '');
+      notifyTemplateEditorChanged(bldContainer);
     });
     editor.appendChild(addBldBtn);
 
@@ -2347,16 +2680,9 @@
         description: '',
         offsetDays: 0
       }, users);
+      notifyTemplateEditorChanged(tdContainer);
     });
     editor.appendChild(addTdBtn);
-
-    // ---- Save Bar ----
-    var saveBar = document.createElement('div');
-    saveBar.className = 'save-bar';
-    saveBar.innerHTML =
-      '<button class="btn-primary" id="tpl-save-btn">Save</button>' +
-      '<span class="save-feedback" id="tpl-save-feedback"></span>';
-    editor.appendChild(saveBar);
 
     container.appendChild(editor);
 
@@ -2385,6 +2711,37 @@
     document.getElementById('tpl-save-btn').addEventListener('click', function () {
       saveTemplate(template.id);
     });
+
+    function updateEditorSummary() {
+      var summary = document.getElementById('template-editor-summary');
+      if (!summary) return;
+      var taskCount = tdContainer.querySelectorAll('.task-def-item').length;
+      var refCount = refsContainer.querySelectorAll('.ref-row').length;
+      var linkCount = bldContainer.querySelectorAll('.bld-row').length;
+      summary.textContent = taskCount + ' task' + (taskCount !== 1 ? 's' : '') +
+        ' · ' + refCount + ' reference' + (refCount !== 1 ? 's' : '') +
+        ' · ' + linkCount + ' bundle link' + (linkCount !== 1 ? 's' : '');
+    }
+
+    function markDirty() {
+      updateEditorSummary();
+      var feedback = document.getElementById('tpl-save-feedback');
+      if (!feedback) return;
+      if (feedback.classList.contains('dirty')) return;
+      feedback.textContent = 'Unsaved changes';
+      feedback.className = 'save-feedback dirty';
+    }
+
+    editor.addEventListener('input', markDirty);
+    editor.addEventListener('change', markDirty);
+    editor.addEventListener('template-editor-changed', markDirty);
+    editor.addEventListener('template-editor-reordered', updateEditorSummary);
+    updateEditorSummary();
+  }
+
+  function notifyTemplateEditorChanged(el) {
+    if (!el) return;
+    el.dispatchEvent(new CustomEvent('template-editor-changed', { bubbles: true }));
   }
 
   function addReferenceRow(container, name, url) {
@@ -2399,6 +2756,7 @@
     removeBtn.textContent = 'Remove';
     removeBtn.addEventListener('click', function () {
       row.remove();
+      notifyTemplateEditorChanged(container);
     });
     row.appendChild(removeBtn);
     container.appendChild(row);
@@ -2415,6 +2773,7 @@
     removeBtn.textContent = 'Remove';
     removeBtn.addEventListener('click', function () {
       row.remove();
+      notifyTemplateEditorChanged(container);
     });
     row.appendChild(removeBtn);
     container.appendChild(row);
@@ -2445,6 +2804,7 @@
     removeBtn.textContent = 'Remove';
     removeBtn.addEventListener('click', function () {
       item.remove();
+      notifyTemplateEditorChanged(container);
     });
     header.appendChild(removeBtn);
 
@@ -2543,6 +2903,7 @@
     // Toggle stage visibility on milestone change
     milestoneCheck.addEventListener('change', function () {
       stageGroup.style.display = milestoneCheck.checked ? '' : 'none';
+      notifyTemplateEditorChanged(container);
     });
 
     // Requires file
@@ -2600,6 +2961,8 @@
       } else {
         container.insertBefore(dragSrc, item);
       }
+      container.dispatchEvent(new CustomEvent('template-editor-reordered', { bubbles: true }));
+      notifyTemplateEditorChanged(container);
     });
 
     container.addEventListener('dragend', function () {
@@ -2699,6 +3062,7 @@
     api.templates.update(templateId, updateData).then(function () {
       feedback.textContent = 'Saved successfully!';
       feedback.className = 'save-feedback success';
+      showSuccess('Template saved.');
     }).catch(function (err) {
       feedback.textContent = 'Save failed: ' + err.message;
       feedback.className = 'save-feedback error';
@@ -2709,12 +3073,34 @@
   // ── Recurring View ──────────────────────────────────────────────
 
   var DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  var recurringState = {
+    search: ''
+  };
 
   function scheduleSummary(config) {
+    if (config.cronExpression) {
+      var parts = config.cronExpression.split(/\s+/);
+      if (parts.length === 5) {
+        if (parts[2] === '*' && parts[3] === '*' && parts[4] === '*') return 'Daily';
+        if (parts[2] === '*' && parts[3] === '*' && parts[4] !== '*') {
+          var dayIndex = parseInt(parts[4], 10);
+          return 'Weekly (' + (DAY_NAMES[dayIndex] || ('day ' + parts[4])) + ')';
+        }
+        if (parts[2] !== '*' && parts[3] === '*' && parts[4] === '*') return 'Monthly (day ' + parts[2] + ')';
+      }
+      return config.cronExpression;
+    }
     if (config.schedule === 'daily') return 'Daily';
     if (config.schedule === 'weekly') return 'Weekly (' + DAY_NAMES[config.dayOfWeek] + ')';
     if (config.schedule === 'monthly') return 'Monthly (day ' + config.dayOfMonth + ')';
     return config.schedule;
+  }
+
+  function cronForSchedule(schedule, dayValue) {
+    if (schedule === 'daily') return '0 9 * * *';
+    if (schedule === 'weekly') return '0 9 * * ' + dayValue;
+    if (schedule === 'monthly') return '0 9 ' + dayValue + ' * *';
+    return '';
   }
 
   function renderRecurring() {
@@ -2745,6 +3131,13 @@
         '<div class="form-group" id="rec-day-group" style="display:none;">' +
           '<label for="rec-day" id="rec-day-label">Day</label>' +
           '<input type="number" id="rec-day" min="0" max="31" style="width:80px;padding:8px 10px;border:1px solid #ddd;border-radius:4px;font-size:14px;" />' +
+        '</div>' +
+        '<div class="form-group">' +
+          '<label>State</label>' +
+          '<label class="inline-checkbox">' +
+            '<input type="checkbox" id="rec-enabled" checked />' +
+            'Enabled' +
+          '</label>' +
         '</div>' +
         '<div class="form-group">' +
           '<label>&nbsp;</label>' +
@@ -2781,24 +3174,47 @@
     scheduleSelect.addEventListener('change', updateDayField);
 
     document.getElementById('rec-create-btn').addEventListener('click', function () {
+      var btn = document.getElementById('rec-create-btn');
       var desc = document.getElementById('rec-desc').value.trim();
       var schedule = scheduleSelect.value;
+      var enabled = document.getElementById('rec-enabled').checked;
       if (!desc) {
         showError('Description is required.');
         return;
       }
-      var data = { description: desc, schedule: schedule };
-      if (schedule === 'weekly') {
-        data.dayOfWeek = parseInt(dayInput.value, 10);
-      } else if (schedule === 'monthly') {
-        data.dayOfMonth = parseInt(dayInput.value, 10);
+      var dayValue = dayInput.value;
+      if ((schedule === 'weekly' || schedule === 'monthly') && dayValue === '') {
+        showError('Choose a day for this recurring schedule.');
+        return;
       }
+      var data = { description: desc, cronExpression: cronForSchedule(schedule, dayValue) };
+      if (schedule === 'weekly') {
+        var dayOfWeek = parseInt(dayValue, 10);
+        if (Number.isNaN(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) {
+          showError('Day of week must be between 0 and 6.');
+          return;
+        }
+      } else if (schedule === 'monthly') {
+        var dayOfMonth = parseInt(dayValue, 10);
+        if (Number.isNaN(dayOfMonth) || dayOfMonth < 1 || dayOfMonth > 31) {
+          showError('Day of month must be between 1 and 31.');
+          return;
+        }
+      }
+      data.enabled = enabled;
+      setButtonBusy(btn, true, 'Create', 'Creating...');
       api.recurring.create(data).then(function () {
         document.getElementById('rec-desc').value = '';
+        document.getElementById('rec-enabled').checked = true;
+        scheduleSelect.value = 'daily';
         dayInput.value = '';
+        updateDayField();
+        showSuccess('Recurring config created.');
         loadRecurring();
       }).catch(function (err) {
         showError('Failed to create recurring config: ' + err.message);
+      }).finally(function () {
+        setButtonBusy(btn, false, 'Create');
       });
     });
 
@@ -2825,17 +3241,22 @@
     app.appendChild(genSection);
 
     document.getElementById('gen-btn').addEventListener('click', function () {
+      var btn = document.getElementById('gen-btn');
       var startDate = document.getElementById('gen-start').value;
       var endDate = document.getElementById('gen-end').value;
       var resultDiv = document.getElementById('gen-result');
+      setButtonBusy(btn, true, 'Generate', 'Generating...');
       resultDiv.textContent = 'Generating...';
       api.recurring.generate({ startDate: startDate, endDate: endDate }).then(function (data) {
         var count = (data.generated || []).length;
         var skipped = data.skipped || 0;
         resultDiv.textContent = 'Generated ' + count + ' task(s), skipped ' + skipped + ' duplicate(s).';
+        showSuccess('Tasks generated.');
       }).catch(function (err) {
         resultDiv.textContent = '';
         showError('Failed to generate tasks: ' + err.message);
+      }).finally(function () {
+        setButtonBusy(btn, false, 'Generate');
       });
     });
 
@@ -2843,6 +3264,18 @@
     var tableContainer = document.createElement('div');
     tableContainer.id = 'recurring-table';
     app.appendChild(tableContainer);
+
+    var listToolbar = document.createElement('div');
+    listToolbar.className = 'list-toolbar';
+    listToolbar.innerHTML =
+      '<div class="section-summary" id="recurring-count">Recurring configs</div>' +
+      '<input type="search" id="recurring-search" class="search-input" placeholder="Search recurring tasks" value="' + escapeHtml(recurringState.search) + '" />';
+    app.insertBefore(listToolbar, tableContainer);
+
+    document.getElementById('recurring-search').addEventListener('input', function (e) {
+      recurringState.search = e.target.value.trim().toLowerCase();
+      loadRecurring();
+    });
 
     loadRecurring();
   }
@@ -2857,20 +3290,50 @@
 
     api.recurring.list().then(function (data) {
       var configs = data.recurringConfigs || [];
+      var totalCount = configs.length;
+      var countEl = document.getElementById('recurring-count');
+      if (countEl) {
+        countEl.textContent = totalCount + ' recurring config' + (totalCount !== 1 ? 's' : '');
+      }
       if (configs.length === 0) {
-        container.innerHTML = '<div class="empty-state">No recurring configs yet. Create one to get started.</div>';
+        container.innerHTML = renderEmptyState(
+          'No recurring configs yet',
+          'Create a schedule above to generate repeatable tasks automatically.',
+          []
+        );
         return;
       }
-      var html = '<table><thead><tr>' +
+
+      if (recurringState.search) {
+        configs = configs.filter(function (c) {
+          var haystack = [c.description || '', scheduleSummary(c), c.enabled ? 'enabled' : 'disabled'].join(' ').toLowerCase();
+          return haystack.indexOf(recurringState.search) !== -1;
+        });
+      }
+
+      if (countEl) {
+        countEl.textContent = configs.length + ' of ' + totalCount + ' recurring config' + (totalCount !== 1 ? 's' : '') + ' shown';
+      }
+
+      if (configs.length === 0) {
+        container.innerHTML = renderEmptyState(
+          'No recurring configs match your search',
+          'Clear or broaden the search to see more recurring configs.',
+          []
+        );
+        return;
+      }
+
+      var html = '<table class="responsive-table"><thead><tr>' +
         '<th>Description</th><th>Schedule</th><th>Enabled</th><th>Actions</th>' +
         '</tr></thead><tbody>';
       configs.forEach(function (c) {
         var enabledText = c.enabled ? 'Yes' : 'No';
         html += '<tr>' +
-          '<td>' + escapeHtml(c.description) + '</td>' +
-          '<td>' + escapeHtml(scheduleSummary(c)) + '</td>' +
-          '<td>' + enabledText + '</td>' +
-          '<td>' +
+          '<td data-label="Description">' + escapeHtml(c.description) + '</td>' +
+          '<td data-label="Schedule">' + escapeHtml(scheduleSummary(c)) + '</td>' +
+          '<td data-label="Enabled">' + enabledText + '</td>' +
+          '<td data-label="Actions">' +
             '<button class="btn-danger" data-delete-recurring="' + c.id + '" data-rec-desc="' + escapeHtml(c.description) + '">Delete</button>' +
           '</td>' +
           '</tr>';
@@ -2884,10 +3347,13 @@
           var id = btn.getAttribute('data-delete-recurring');
           var desc = btn.getAttribute('data-rec-desc');
           if (!confirm('Delete recurring config: "' + desc + '"?')) return;
+          setButtonBusy(btn, true, 'Delete', 'Deleting...');
           api.recurring.delete(id).then(function () {
+            showSuccess('Recurring config deleted.');
             loadRecurring();
           }).catch(function (err) {
             showError('Failed to delete: ' + err.message);
+            setButtonBusy(btn, false, 'Delete');
           });
         });
       });

@@ -282,6 +282,7 @@ test.describe('Frontend sign-in flow', () => {
     await expect(page.locator('#signin-email')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('#signin-password')).toBeVisible();
     await expect(page.locator('#signin-submit')).toBeVisible();
+    await expect(page.locator('#signin-email')).toBeFocused();
 
     // Nav links should be hidden
     await expect(page.locator('.nav-link').first()).not.toBeVisible();
@@ -308,6 +309,35 @@ test.describe('Frontend sign-in flow', () => {
     await expect(page.locator('#signin-email')).not.toBeVisible({ timeout: 5000 });
     await expect(page.locator('.nav-link').first()).toBeVisible();
     await expect(page.locator('#signout-btn')).toBeVisible();
+
+    await context.close();
+  });
+
+  test('sign-in submit shows pending state and ignores duplicate Enter submissions', async ({ browser }) => {
+    const context = await browser.newContext({ storageState: undefined });
+    const page = await context.newPage();
+    let loginRequests = 0;
+
+    await page.route('**/api/auth/login', async (route) => {
+      loginRequests += 1;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await route.continue();
+    });
+
+    await page.goto('/');
+    await expect(page.locator('#signin-email')).toBeVisible({ timeout: 5000 });
+
+    await page.fill('#signin-email', 'grace@datatalks.club');
+    await page.fill('#signin-password', '111');
+    await page.locator('#signin-password').press('Enter');
+
+    await expect(page.locator('#signin-submit')).toBeDisabled();
+    await expect(page.locator('#signin-submit')).toHaveText('Signing in...');
+    await expect(page.locator('#signin-submit')).toHaveAttribute('aria-busy', 'true');
+
+    await page.locator('#signin-password').press('Enter');
+    await expect(page.locator('#signout-btn')).toBeVisible({ timeout: 5000 });
+    expect(loginRequests).toBe(1);
 
     await context.close();
   });

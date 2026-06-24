@@ -73,6 +73,7 @@ test.describe('Template Editor (issue #29)', () => {
     await expect(newsletterCard.locator('.badge-type')).toContainText('newsletter');
     await expect(newsletterCard.locator('.template-card-tasks')).toContainText('2 tasks');
     await expect(newsletterCard.locator('.badge-trigger.automatic')).toBeVisible();
+    await expect(newsletterCard.locator('.card-action-text')).toHaveText('Edit template');
 
     // Check tags
     const tagBadges = newsletterCard.locator('.badge-tag');
@@ -148,6 +149,51 @@ test.describe('Template Editor (issue #29)', () => {
     expect(body.template.emoji).toBe('\u{1F4E8}');
 
     // Cleanup
+    await request.delete(`/api/templates/${template.id}`);
+  });
+
+  test('editor shows summary, sticky save controls, dirty state, and save success feedback', async ({ page, request }) => {
+    var suffix = uid();
+    var name = 'EditorUX-' + suffix;
+
+    const template = await createTemplate(request, {
+      name: name,
+      type: 'test',
+      references: [{ name: 'Guide', url: 'https://example.com/guide' }],
+      bundleLinkDefinitions: [{ name: 'Luma' }],
+      taskDefinitions: [
+        { refId: 'a', description: 'Task A', offsetDays: 0 },
+        { refId: 'b', description: 'Task B', offsetDays: 1 },
+      ],
+    });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/#/templates');
+    await page.waitForSelector('.template-card');
+
+    await page.locator('.template-card', { hasText: name }).click();
+    await page.waitForSelector('.template-editor');
+
+    await expect(page.locator('.template-editor-header h2')).toContainText(name);
+    await expect(page.locator('#template-editor-summary')).toContainText('2 tasks');
+    await expect(page.locator('#template-editor-summary')).toContainText('1 reference');
+    await expect(page.locator('#template-editor-summary')).toContainText('1 bundle link');
+    await expect(page.locator('#tpl-save-feedback')).toContainText('No unsaved changes');
+
+    const saveBarVisible = await page.locator('.template-save-bar').evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      return rect.top >= 0 && rect.bottom <= window.innerHeight;
+    });
+    expect(saveBarVisible).toBe(true);
+
+    await page.locator('#tpl-name').fill(name + '-updated');
+    await expect(page.locator('#tpl-save-feedback')).toContainText('Unsaved changes');
+
+    await page.locator('#tpl-save-btn').click();
+    await page.waitForSelector('.save-feedback.success');
+    await expect(page.locator('#tpl-save-feedback')).toContainText('Saved successfully');
+    await expect(page.locator('.success-banner')).toContainText('Template saved.');
+
     await request.delete(`/api/templates/${template.id}`);
   });
 

@@ -638,7 +638,7 @@ test.describe('Frontend bundles page', () => {
     await expect(bundleLink).toBeVisible();
   });
 
-  test('empty state shows "No bundles yet" message', async ({ page, request }) => {
+  test('empty state explains how to create the first bundle', async ({ page, request }) => {
     // Delete all existing bundles first (archive then delete)
     const listRes = await request.get('/api/bundles');
     const { bundles } = await listRes.json();
@@ -650,8 +650,8 @@ test.describe('Frontend bundles page', () => {
     await page.goto('/#/bundles');
     await page.waitForSelector('.empty-state');
 
-    const emptyText = await page.textContent('.empty-state');
-    expect(emptyText).toContain('No bundles yet. Create one to get started.');
+    await expect(page.locator('.empty-state-title')).toHaveText('No bundles yet');
+    await expect(page.locator('.empty-state-body')).toContainText('Use the form above to create a bundle');
   });
 
   test('creating a bundle from the frontend form works', async ({ page }) => {
@@ -667,6 +667,9 @@ test.describe('Frontend bundles page', () => {
 
     const titles = await page.locator('.bundle-card-title').allTextContents();
     expect(titles).toContain('Test Bundle');
+    const card = page.locator('.bundle-card', { hasText: 'Test Bundle' });
+    await expect(card.locator('.card-action-link')).toHaveText('Open bundle');
+    await expect(card.locator('.card-action-link')).toHaveAttribute('href', '#/bundles');
   });
 });
 

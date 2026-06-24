@@ -295,21 +295,34 @@ test.describe('Home dashboard (issue #26)', () => {
   // ──────────────────────────────────────────────────────────────────
 
   test.describe('Scenario: Dashboard shows empty states gracefully', () => {
-    test('shows empty states when there are no tasks for today', async ({ page }) => {
-      // We test this by navigating to the dashboard. If there are no tasks
-      // assigned to the current user, it shows "No tasks for today"
-      // This depends on state, but we test that the empty-state class is used
+    test('empty dashboard states provide clear next actions', async ({ page }) => {
+      await page.route('**/api/tasks?date=*', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ tasks: [] }),
+        });
+      });
+      await page.route('**/api/bundles', async (route) => {
+        if (route.request().method() === 'GET') {
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ bundles: [] }),
+          });
+          return;
+        }
+        await route.continue();
+      });
+
       await page.goto('/#/');
-      await page.waitForSelector('#dashboard-tasks', { timeout: 10000 });
+      await expect(page.locator('#dashboard-bundles .empty-state-title')).toHaveText('No active bundles');
+      await expect(page.locator('#dashboard-bundles .empty-state-body')).toContainText('Create a bundle');
+      await expect(page.locator('#dashboard-bundles .empty-state-action', { hasText: 'New bundle' })).toHaveAttribute('href', '#/bundles');
 
-      // Wait a moment for data to load
-      await page.waitForTimeout(1000);
-
-      // The dashboard-tasks container should have content (either tasks table or empty state)
-      const tasksContainer = page.locator('#dashboard-tasks');
-      const content = await tasksContainer.innerHTML();
-      // Should not still be "Loading..."
-      expect(content).not.toBe('<p>Loading...</p>');
+      await expect(page.locator('#dashboard-tasks .empty-state-title')).toHaveText('No tasks for today');
+      await expect(page.locator('#dashboard-tasks .empty-state-body')).toContainText('Use the task list');
+      await expect(page.locator('#dashboard-tasks .empty-state-action', { hasText: 'Open tasks' })).toHaveAttribute('href', '#/tasks');
     });
   });
 
@@ -459,6 +472,7 @@ test.describe('Home dashboard (issue #26)', () => {
         await expect(instrLink).toBeVisible();
         await expect(instrLink).toHaveAttribute('href', 'https://docs.google.com/dashboard-test');
         await expect(instrLink).toHaveAttribute('target', '_blank');
+        await expect(instrLink).toHaveAttribute('aria-label', 'Open instructions for Instructions link dashboard test');
       } finally {
         await request.delete('/api/tasks/' + task.id);
       }

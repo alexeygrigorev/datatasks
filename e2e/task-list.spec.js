@@ -67,6 +67,7 @@ test.describe('Task list view redesign', () => {
       await expect(instrLink).toBeVisible();
       await expect(instrLink).toHaveAttribute('href', 'https://docs.google.com/inst-e2e');
       await expect(instrLink).toHaveAttribute('target', '_blank');
+      await expect(instrLink).toHaveAttribute('aria-label', 'Open instructions for Task with instructions E2E');
 
       // Find the row for the task with required link
       const reqRow = page.locator('[data-task-row="' + taskWithRequiredLink.id + '"]');

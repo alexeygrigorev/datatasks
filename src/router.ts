@@ -269,14 +269,14 @@ async function route(event: LambdaEvent, client: DynamoDBDocumentClient): Promis
 
       // requiredLinkName validation: cannot mark done if requiredLinkName is set but link is empty
       if (updates.status === 'done') {
-        const effectiveRequiredLinkName = (updates.requiredLinkName !== undefined ? updates.requiredLinkName : (existing as Record<string, unknown>).requiredLinkName) as string | undefined;
-        const effectiveLink = (updates.link !== undefined ? updates.link : (existing as Record<string, unknown>).link) as string | undefined;
+        const effectiveRequiredLinkName = (updates.requiredLinkName !== undefined ? updates.requiredLinkName : existing.requiredLinkName) as string | undefined;
+        const effectiveLink = (updates.link !== undefined ? updates.link : existing.link) as string | undefined;
         if (effectiveRequiredLinkName && !effectiveLink) {
           return jsonResponse(400, { error: `Cannot mark task as done: required link '${effectiveRequiredLinkName}' is not filled` });
         }
 
         // requiresFile validation: cannot mark done if requiresFile is true and no files uploaded
-        const effectiveRequiresFile = (updates.requiresFile !== undefined ? updates.requiresFile : (existing as Record<string, unknown>).requiresFile) as boolean | undefined;
+        const effectiveRequiresFile = (updates.requiresFile !== undefined ? updates.requiresFile : existing.requiresFile) as boolean | undefined;
         if (effectiveRequiresFile) {
           const files = await listFilesByTask(client, id);
           if (files.length === 0) {

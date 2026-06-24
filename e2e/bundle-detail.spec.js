@@ -573,6 +573,7 @@ test.describe('Bundle detail view (issue #27)', () => {
       await expect(instrLink).toBeVisible();
       await expect(instrLink).toHaveAttribute('href', 'https://docs.google.com/instructions');
       await expect(instrLink).toHaveAttribute('target', '_blank');
+      await expect(instrLink).toHaveAttribute('aria-label', 'Open instructions for ' + taskWithInstr.description);
 
       // The instructions link should be inside the same task row (inline, not a separate column)
       const instrLinkParent = instrRow.locator('.task-checklist-main-line');
